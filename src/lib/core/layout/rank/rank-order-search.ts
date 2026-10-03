@@ -80,20 +80,13 @@ function crossingFree(candidate: ValidRankOrderCandidate): boolean {
 	return candidate.routeScore.strictCrossings === 0 && candidate.routeScore.validatedBridges === 0;
 }
 
-/**
- * No rank edit can improve bridge-free documentary routes, nor documentary rows already down
- * to the crossings every order keeps: a candidate must first cross less to win.
- */
-function documentaryNeedsNoSearch(candidate: ValidRankOrderCandidate, lowerBound: number): boolean {
-	if (crossingFree(candidate)) return true;
-	return candidate.topologyCrossings <= lowerBound && candidate.kendall === 0;
-}
-
 class RankOrderSearch {
 	mode = RankSearchMode.Skipped;
 	stop = RankSearchStop.NoBand;
 	proposed = 1;
 	evaluated = 1;
+	/** Routable proposals never scored on real routes: budget spent or routes already crossing-free. */
+	pruned = 0;
 	valid = 0;
 	unverified = 0;
 	validations = 0;
@@ -106,8 +99,9 @@ class RankOrderSearch {
 	/** Block-repaired candidates already proposed: their reopened order was admitted once. */
 	private readonly repaired = new Set<string>();
 	private readonly frontier: RankOrder[];
+	/** Heuristic proposals the proxy ranks behind the best order, routed once the walk is over. */
+	private readonly deferred: RankOrder[] = [];
 	private readonly topology: RankTopologyOracle;
-	readonly topologyBound: number;
 	private readonly positions: readonly ReadonlyMap<string, number>[];
 	private documentaryScore: DedicatedRouteScore | undefined;
 
@@ -115,7 +109,6 @@ class RankOrderSearch {
 		this.seen = new Set([JSON.stringify(input.domain.bands)]);
 		this.frontier = [input.domain.bands];
 		this.topology = new RankTopologyOracle(input.structure, input.domain);
-		this.topologyBound = this.topology.lowerBound;
 		this.positions = input.domain.bands.map(
 			(band) => new Map(band.map((id, position) => [id, position])),
 		);
@@ -130,6 +123,7 @@ class RankOrderSearch {
 				stop: this.stop,
 				proposed: this.proposed,
 				evaluated: this.evaluated,
+				pruned: this.pruned,
 				valid: this.valid,
 				rejected: this.rejected,
 				selectedOrder: this.selected?.order ?? this.input.domain.bands,
@@ -181,12 +175,23 @@ class RankOrderSearch {
 			routeScore: outcome.score,
 			kendall: rankOrderKendallDistance(order, this.input.domain.bands),
 		};
-		this.selected = candidate;
+		// Real routes rank first: the topological proxy and the documentary distance only break
+		// ties between equal route scores, so an order the proxy dislikes still wins by crossing less.
+		const best = this.selected;
+		if (best === undefined) {
+			this.selected = candidate;
+			return;
+		}
+		const routes = compareDedicatedRouteScores(candidate.routeScore, best.routeScore);
+		const proxy = this.compareProxy(candidate.topologyCrossings, order, best);
+		if ((routes || proxy) < 0) this.selected = candidate;
 	}
 
-	private cutOff(stop: RankSearchStop): false {
+	/** The first budget reached names the stop; a later one cannot hide it. */
+	private truncate(stop: RankSearchStop): void {
+		if (!this.truncated) this.stop = stop;
 		this.truncated = true;
-		return this.end(stop);
+		this.exhaustive = false;
 	}
 
 	private end(stop: RankSearchStop): false {
@@ -195,17 +200,24 @@ class RankOrderSearch {
 		return false;
 	}
 
-	/** A dominated rank order cannot win even with perfect routes; still explore its neighbors. */
-	private cannotBeatSelected(order: RankOrder): boolean {
+	/** Topological crossings, then documentary distance, then earlier documentary positions. */
+	private compareProxy(crossings: number, order: RankOrder, best: ValidRankOrderCandidate): number {
+		const topology = crossings - best.topologyCrossings;
+		const kendall = rankOrderKendallDistance(order, this.input.domain.bands) - best.kendall;
+		return topology || kendall || this.compareDocumentaryPositions(order, best.order);
+	}
+
+	/**
+	 * The proxy ranks this order behind the best one: its pipeline may wait, since a heuristic walk
+	 * can propose more orders than its budget routes. It is deferred, never discarded.
+	 */
+	private deferBehindSelected(order: RankOrder): boolean {
 		const best = this.selected;
 		if (best === undefined) return false;
 		const { structure, domain } = this.input;
 		const rows = applyRankOrder(structure, domain, order);
 		const crossings = this.topology.crossings(rows, best.topologyCrossings);
-		if (crossings !== best.topologyCrossings) return crossings > best.topologyCrossings;
-		const kendall = rankOrderKendallDistance(order, this.input.domain.bands);
-		if (kendall !== best.kendall) return kendall > best.kendall;
-		return this.compareDocumentaryPositions(order, best.order) >= 0;
+		return this.compareProxy(crossings, order, best) >= 0;
 	}
 
 	/** Ties prefer earlier documentary positions, so renaming an endpoint cannot change them. */
@@ -240,19 +252,36 @@ class RankOrderSearch {
 
 	/**
 	 * An order still closing a passage cannot be routed: it is neither evaluated nor explored.
-	 * Routes without crossing or bridge end the search, even if a closer order would route so too.
+	 * Every other proposal is routed, a heuristic one the proxy ranks behind the best order only
+	 * after the walk; none is discarded on the proxy alone.
 	 */
 	private admit({ order, closed }: ReopenedOrder, key: string): boolean {
 		if (this.seen.has(key)) return true;
-		if (this.proposed >= this.input.limits.uniqueProposals)
-			return this.cutOff(RankSearchStop.ProposalBudget);
+		if (this.proposed >= this.input.limits.uniqueProposals) {
+			this.truncate(RankSearchStop.ProposalBudget);
+			return false;
+		}
 		this.seen.add(key);
 		this.proposed += 1;
 		if (closed) return true;
 		this.frontier.push(order);
-		if (this.cannotBeatSelected(order)) return true;
-		if (this.evaluated >= this.input.limits.completePipelines)
-			return this.cutOff(RankSearchStop.EvaluationBudget);
+		if (this.mode === RankSearchMode.Heuristic && this.deferBehindSelected(order)) {
+			this.deferred.push(order);
+			return true;
+		}
+		return this.route(order);
+	}
+
+	/**
+	 * Scores one proposal on real routes while pipelines remain; later ones are counted as pruned.
+	 * Routes without crossing or bridge end the search, even if a closer order would route so too.
+	 */
+	private route(order: RankOrder): boolean {
+		if (this.evaluated >= this.input.limits.completePipelines) {
+			this.pruned += 1;
+			this.truncate(RankSearchStop.EvaluationBudget);
+			return true;
+		}
 		this.evaluated += 1;
 		try {
 			this.verify(order, this.input.evaluate(order));
@@ -266,8 +295,8 @@ class RankOrderSearch {
 	}
 
 	/**
-	 * Orders closer to the documentary one are met first, so the first crossing-free order is the
-	 * closest one, unless a farther order crosses less in the topology.
+	 * Every enumerated order fits the pipeline budget, so none waits on the proxy. Orders closer
+	 * to the documentary one are met first: the first crossing-free order met is the closest one.
 	 */
 	runExact(): void {
 		this.mode = RankSearchMode.Exact;
@@ -276,7 +305,7 @@ class RankOrderSearch {
 			.map((order) => ({ order, kendall: rankOrderKendallDistance(order, bands) }))
 			.toSorted((left, right) => left.kendall - right.kendall);
 		for (const { order } of orders) if (!this.propose(order)) return;
-		this.stop = RankSearchStop.Complete;
+		if (!this.truncated) this.stop = RankSearchStop.Complete;
 	}
 
 	/**
@@ -302,12 +331,27 @@ class RankOrderSearch {
 		return this.admit(current, key);
 	}
 
+	/**
+	 * The walk routes the orders the proxy promises first; the deferred ones take what is left.
+	 * Once routes cross nothing, the deferred orders still waiting are pruned, never scored.
+	 */
 	runHeuristic(): void {
 		this.mode = RankSearchMode.Heuristic;
+		this.walk();
+		for (const [index, order] of this.deferred.entries()) {
+			if (this.stop === RankSearchStop.CrossingFree) {
+				this.pruned += this.deferred.length - index;
+				return;
+			}
+			this.route(order);
+		}
+	}
+
+	private walk(): void {
 		if (!this.sweeps() || !this.localImprovements()) return;
 		for (const source of this.frontier)
 			for (const order of adjacentOrders(source)) if (!this.propose(order)) return;
-		this.stop = RankSearchStop.Complete;
+		if (!this.truncated) this.stop = RankSearchStop.Complete;
 	}
 
 	/** False once the search has ended. */
@@ -336,7 +380,7 @@ export function searchDedicatedRankOrders(input: RankOrderSearchInput): RankOrde
 		search.rejectFailure(input.domain.bands, baseline);
 	else search.verify(input.domain.bands, baseline, true);
 	const documentary = search.selected;
-	if (documentary !== undefined && documentaryNeedsNoSearch(documentary, search.topologyBound)) {
+	if (documentary !== undefined && crossingFree(documentary)) {
 		search.stop = RankSearchStop.OptimalBound;
 		search.exhaustive = true;
 		return search.result();

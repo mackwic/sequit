@@ -1,28 +1,24 @@
 import { defined } from '../../document/logic-document';
-import { RAIL_SPACING } from '../layout-settings';
-import { untangleChannelRails } from './channel-crossings';
-import { allocateChannelIntervals } from './channel-interval-allocation';
-import type {
-	ChannelEndpoint,
-	ChannelRailAllocation,
-	ChannelRouting,
-	ChannelRun,
-	ChannelWire,
-} from './channel-types';
+import { countChannelCrossings } from './channel-crossing-cost';
+import type { ChannelEndpoint, ChannelRouting, ChannelRun, ChannelWire } from './channel-types';
+import {
+	assignChannelRails,
+	hasCrossedChannelFamilies,
+	hasSharedEndpoint,
+	nestChannelEndpointRuns,
+	preserveChannelRunBindings,
+} from './rail-packing';
 
 enum RunSide {
 	First = 'first',
 	Last = 'last',
 }
 
-function hasSharedEndpoint(wire: ChannelEndpoint): boolean {
-	return wire.sharedSource !== undefined || wire.sharedTarget !== undefined;
-}
-
 const UNVISITED = 0;
 const ON_PATH = 1;
 const EXPLORED = 2;
 const NO_ARRIVALS: readonly number[] = [];
+const NO_FAMILY_BREAKS: readonly ChannelWire[] = [];
 
 interface CycleSearch {
 	readonly wires: readonly ChannelWire[];
@@ -151,6 +147,7 @@ function makeRuns(
 	wires: readonly ChannelWire[],
 	sharedEndpoints: boolean,
 	nonInverted: boolean,
+	familyBreaks: ReadonlySet<ChannelWire> | undefined,
 ): ChannelRun[] {
 	let moving = wires;
 	if (sharedEndpoints) moving = wires.filter((wire) => wire.source !== wire.target);
@@ -158,6 +155,7 @@ function makeRuns(
 	if (sharedEndpoints) breaks = sharedEndpointBreaks(wires, moving);
 	else if (nonInverted) breaks = new Set();
 	else breaks = cycleBreaks(moving);
+	for (const wire of familyBreaks ?? NO_FAMILY_BREAKS) breaks.add(wire);
 	const distinct = new Set<number>();
 	if (breaks.size > 0)
 		for (const wire of wires) {
@@ -180,6 +178,7 @@ function makeRuns(
 			runs.push(wire.first, wire.last);
 		} else {
 			wire.first = run(wire.source, wire.target);
+			wire.middle = undefined;
 			wire.last = wire.first;
 			runs.push(wire.first);
 		}
@@ -255,35 +254,22 @@ function mergeRuns(
 	return retained;
 }
 
-function assignRails(
-	runs: readonly ChannelRun[],
-	wires: readonly ChannelWire[],
-	ownerId: string,
-): ChannelRailAllocation {
-	const ready = runs.filter((segment) => segment.remaining === 0);
-	let nextRunKey = 0;
-	const layers: ChannelRun[][] = [];
-	for (const segment of ready) {
-		segment.key = nextRunKey++;
-		const layer = layers[segment.depth] ?? [];
-		layer.push(segment);
-		layers[segment.depth] = layer;
-		for (const next of segment.next) {
-			next.depth = Math.max(next.depth, segment.depth + 1);
-			next.remaining -= 1;
-			if (next.remaining === 0) ready.push(next);
-		}
-	}
-	if (ready.length !== runs.length) throw new Error('Unresolved channel routing constraint cycle');
-	let count = 0;
-	const edge = { ownerId, capacity: runs.length, spacing: RAIL_SPACING };
-	const trackByRunKey = new Map<number, number>();
-	for (const layer of layers) {
-		count += allocateChannelIntervals(edge, layer, count, trackByRunKey).trackCount;
-	}
-	edge.capacity = count;
-	untangleChannelRails(wires, ready, layers, trackByRunKey);
-	return { edge, trackByRunKey, railCount: count };
+function channelRuns(
+	moving: readonly ChannelWire[],
+	sharedEndpoints: boolean,
+	nonInverted: boolean,
+	familyBreaks?: ReadonlySet<ChannelWire>,
+): ChannelRun[] {
+	const arrivals = mergeRuns(
+		moving,
+		makeRuns(moving, sharedEndpoints, nonInverted, familyBreaks),
+		RunSide.Last,
+		sharedEndpoints,
+	);
+	const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
+	// Straight wires keep their column and impose no traverse order.
+	for (const wire of moving) if (wire.source !== wire.target) orderDepartures(moving, wire);
+	return runs;
 }
 
 /** The caller owns these fresh wires; routing fills in their run references in place. */
@@ -301,19 +287,33 @@ export function routeOwnedChannel(
 		})
 		// Wires at the same coordinates keep the caller's documentary order, never their ids.
 		.sort((a, b) => a.source - b.source || a.target - b.target);
-	const arrivals = mergeRuns(
-		moving,
-		makeRuns(moving, sharedEndpoints, nonInverted),
-		RunSide.Last,
-		sharedEndpoints,
-	);
-	const runs = mergeRuns(moving, arrivals, RunSide.First, sharedEndpoints);
-	for (const wire of moving) {
-		// A straight wire keeps one column across the channel: it neither leaves nor reaches it on
-		// a traverse, so only the wires that turn there order their runs.
-		if (wire.source !== wire.target) orderDepartures(moving, wire);
+	const baselineRuns = channelRuns(moving, sharedEndpoints, nonInverted);
+	const assignedBaseline = assignChannelRails(baselineRuns, wires, ownerId, false);
+	if (assignedBaseline === undefined) throw new Error('Unresolved channel column constraint cycle');
+	const baseline = assignedBaseline.allocation;
+	if (!hasCrossedChannelFamilies(moving)) return { wires, ...baseline };
+	const baselineCost = countChannelCrossings(wires, baseline.railCount);
+	const restoreBindings = preserveChannelRunBindings(moving);
+	let familyBreaks: Set<ChannelWire> | undefined;
+	for (;;) {
+		const runs = channelRuns(moving, sharedEndpoints, nonInverted, familyBreaks);
+		nestChannelEndpointRuns(moving);
+		const assigned = assignChannelRails(runs, wires, ownerId, true);
+		if (assigned !== undefined) {
+			// Equal crossing cost does not justify geometry churn or extra corridor capacity.
+			if (defined(assigned.crossings) < baselineCost) return { wires, ...assigned.allocation };
+			restoreBindings();
+			return { wires, ...baseline };
+		}
+		// Split an unresolved departure rather than dropping its endpoint-family precedence.
+		const divided = moving.find((wire) => {
+			if (wire.middle !== undefined || wire.source === wire.target) return false;
+			return defined(wire.last).remaining > 0;
+		});
+		if (divided === undefined) throw new Error('Unresolved channel routing constraint cycle');
+		familyBreaks ??= new Set<ChannelWire>();
+		familyBreaks.add(divided);
 	}
-	return { wires, ...assignRails(runs, moving, ownerId) };
 }
 
 /** Share traverses at a common port, preserve distinct nets, then color transverse runs. */

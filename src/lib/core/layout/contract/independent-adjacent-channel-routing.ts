@@ -123,8 +123,10 @@ export function channelFor(input: {
 	const { graph, sourceByRelation, targetByRelation } = input;
 	const sharedSources = sharedPortKeys(sourceByRelation, 'source');
 	const sharedTargets = sharedPortKeys(targetByRelation, 'target');
-	const endpoints: ChannelEndpoint[] = graph.relations.map(({ relation }) => ({
+	const endpoints: ChannelEndpoint[] = graph.relations.map(({ relation, source, target }) => ({
 		id: relation.id,
+		sourceEndpoint: source,
+		targetEndpoint: target,
 		source: defined(sourceByRelation.get(relation.id)),
 		target: defined(targetByRelation.get(relation.id)),
 		sharedSource: sharedSources.get(relation.id),
@@ -178,6 +180,7 @@ export function channelMaterializedRelations(input: {
 		vertical: true,
 		railStart: (sourceTop + targetBottom) / 2 + halfSpan,
 		railStep: -RAIL_SPACING,
+		frames: [],
 	};
 	const pointsByRelation = new Map(
 		channel.wires.map((wire) => [

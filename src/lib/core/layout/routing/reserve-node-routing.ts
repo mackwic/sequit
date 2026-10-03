@@ -1,4 +1,5 @@
 import { defined } from '../../document/logic-document';
+import type { LogicGraph } from '../../graph/create-graph';
 import { transverseCenter } from '../geometry/layout-frame';
 import { BASE_RANK_GAP, RAIL_SPACING } from '../layout-settings';
 import type { Bounds } from '../layout-types';
@@ -55,6 +56,7 @@ function offsetReader(
 }
 
 export function planNodeRouting(input: {
+	readonly graph: LogicGraph;
 	readonly corridors: readonly RoutingCorridor[];
 	readonly ports: PortAllocation;
 	readonly ranks: ReadonlyMap<string, number>;
@@ -85,6 +87,8 @@ export function planNodeRouting(input: {
 		if (centers === undefined) {
 			wires = corridor.links.map((link) => ({
 				id: link.relation.id,
+				sourceEndpoint: input.graph.endpointsById.get(link.relation.from),
+				targetEndpoint: input.graph.endpointsById.get(link.relation.to),
 				sharedSource: sourcePorts?.get(link.relation.id),
 				source: link.source + sourceOffset(link),
 				target: link.target + targetOffset(link),
@@ -95,6 +99,8 @@ export function planNodeRouting(input: {
 		} else {
 			wires = corridor.links.map((link) => ({
 				id: link.relation.id,
+				sourceEndpoint: input.graph.endpointsById.get(link.relation.from),
+				targetEndpoint: input.graph.endpointsById.get(link.relation.to),
 				sharedSource: sourcePorts?.get(link.relation.id),
 				source: defined(centers.get(link.relation.from)) + sourceOffset(link),
 				target: defined(centers.get(link.relation.to)) + targetOffset(link),

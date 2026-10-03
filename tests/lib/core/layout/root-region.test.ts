@@ -628,7 +628,8 @@ describe('grid root outcome mapping', () => {
 	});
 
 	it('publishes a grid that exhausts its traversal work as unknown ResourceLimit, not unsupported', () => {
-		// Reviewer A's random-11: one chain crossing out of a three-node cell, left to right.
+		// Reviewer A's random-11, with the three-node source cell two rows below its target: every
+		// crossing keeps the gutters (the original now crosses its neighbour gaps and is rendered).
 		const ids = Array.from({ length: 13 }, (_, index) => `n${index}`);
 		const document = persistedCellGrid(
 			2,
@@ -636,9 +637,9 @@ describe('grid root outcome mapping', () => {
 				ids.slice(0, 1),
 				ids.slice(1, 2),
 				ids.slice(2, 5),
-				ids.slice(5, 8),
-				ids.slice(8, 11),
 				ids.slice(11),
+				ids.slice(8, 11),
+				ids.slice(5, 8),
 			],
 			[
 				['n7', 'n5'],

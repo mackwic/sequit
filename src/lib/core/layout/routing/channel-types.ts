@@ -1,9 +1,12 @@
+import type { GraphEndpoint } from '../../graph/create-graph';
 import type { RoutingEdge } from '../geometry/routing-edge';
 
 export interface ChannelEndpoint {
 	readonly id: string;
 	readonly source: number;
 	readonly target: number;
+	readonly sourceEndpoint?: GraphEndpoint | undefined;
+	readonly targetEndpoint?: GraphEndpoint | undefined;
 	readonly sharedTarget?: string | undefined;
 	readonly sharedSource?: string | undefined;
 }

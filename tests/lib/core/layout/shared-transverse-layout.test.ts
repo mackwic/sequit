@@ -15,6 +15,12 @@ import {
 	type LogicRelation,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { routeBridgeAnalysis } from '../../../../src/lib/core/layout/bridges/bridge-oracle';
+import {
+	longEnd,
+	longitudinal,
+	longStart,
+} from '../../../../src/lib/core/layout/geometry/shared-lane-geometry-primitives';
 import {
 	type SharedLaneGeometry,
 	validateSharedLaneGeometry,
@@ -23,9 +29,11 @@ import {
 	SharedLaneLayoutStatus,
 	solveSharedLaneLayout,
 } from '../../../../src/lib/core/layout/lanes/shared-lane-layout';
+import { verticalDirection } from '../../../../src/lib/core/layout/lanes/shared-lane-model';
 import { transverseRouteSides } from '../../../../src/lib/core/layout/lanes/shared-transverse-sides';
-import type { Point } from '../../../../src/lib/core/layout/layout-types';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import type { Bounds, Point } from '../../../../src/lib/core/layout/layout-types';
+import { contains, prepareLayoutDocument } from '../../../support/harnesses/layout';
+import { laneRowsDocument } from './shared-lane-rows-fixture';
 
 const DIRECTIONS = [
 	[LayoutDirection.TopToBottom, LayoutBias.Top],
@@ -111,6 +119,63 @@ function shifted(points: readonly Point[], index: number, axis: 'x' | 'y', delta
 	return changed;
 }
 
+function routeLength(points: readonly Point[]): number {
+	let length = 0;
+	for (let index = 1; index < points.length; index += 1) {
+		const previous = defined(points[index - 1]);
+		const current = defined(points[index]);
+		length += Math.abs(current.x - previous.x) + Math.abs(current.y - previous.y);
+	}
+	return length;
+}
+
+/** A route that never turns back: its length is the Manhattan distance between its ends. */
+function monotone(points: readonly Point[]): boolean {
+	const start = defined(points[0]);
+	const end = defined(points.at(-1));
+	return routeLength(points) === Math.abs(end.x - start.x) + Math.abs(end.y - start.y);
+}
+
+function insideBounds(bounds: Bounds, points: readonly Point[]): boolean {
+	return points.every((point) => contains(bounds, { ...point, width: 0, height: 0 }));
+}
+
+/** The free distance between two boxes along the rank axis. */
+function rankGap(first: Bounds, second: Bounds, vertical: boolean): number {
+	return Math.max(
+		longStart(second, vertical) - longEnd(first, vertical),
+		longStart(first, vertical) - longEnd(second, vertical),
+	);
+}
+
+/** An L-03 witness: transverse tasks listed with their lane, then child → parent pairs. */
+function selectedWitness(
+	direction: LayoutDirection,
+	lanes: readonly string[],
+	nodes: readonly (readonly [string, string])[],
+	relations: readonly (readonly [string, string])[],
+) {
+	const configuration = defined(DIRECTIONS.find(([candidate]) => candidate === direction));
+	const prepared = prepareLayoutDocument(
+		laneRowsDocument({
+			direction: configuration,
+			orientation: LaneOrientation.Transverse,
+			lanes,
+			nodes,
+			relations,
+		}),
+	);
+	const result = solveSharedLaneLayout(prepared.graph, prepared.ranks, prepared.measurements);
+	if (result.status !== SharedLaneLayoutStatus.Selected) throw new Error(JSON.stringify(result));
+	expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
+	return {
+		layout: result.layout,
+		bounds: new Map(result.layout.elements.map(({ id, bounds }) => [id, bounds])),
+		routes: new Map(result.layout.relations.map(({ id, points }) => [id, points])),
+		vertical: verticalDirection(direction),
+	};
+}
+
 describe('transverse shared lane layout', () => {
 	it.each(DIRECTIONS)(
 		'routes across A|B|C around a middle-lane obstacle in %s',
@@ -161,15 +226,119 @@ describe('transverse shared lane layout', () => {
 	it.each([
 		['forward', 'a1', 'a2'],
 		['backward', 'a2', 'a1'],
-	] as const)('routes %s intra-lane dependencies outside their lane', (_label, from, to) => {
+	] as const)('joins the facing faces of %s intra-lane dependencies', (_label, from, to) => {
 		const document = transverseDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
 			{ id: 'internal', from, to },
 		]);
 		const { result } = solve(document);
 		expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
 		if (result.status !== SharedLaneLayoutStatus.Selected) return;
-		expect(result.layout.relations[0]?.points).toHaveLength(4);
+		const points = defined(result.layout.relations[0]).points;
+		expect(points).toHaveLength(4);
+		expect(monotone(points)).toBe(true);
+		const lane = defined(result.layout.lanes?.find(({ id }) => id === 'A')).bounds;
+		expect(insideBounds(lane, points)).toBe(true);
 	});
+
+	it.each(DIRECTIONS)(
+		'joins two adjacent lanes by one segment between aligned facing faces in %s',
+		(direction) => {
+			const { bounds, routes, vertical } = selectedWitness(
+				direction,
+				['L1', 'L2'],
+				[
+					['n0', 'L1'],
+					['n1', 'L2'],
+				],
+				[['n1', 'n0']],
+			);
+			const points = defined(routes.get('n1-n0'));
+			expect(points).toHaveLength(2);
+			expect(routeLength(points)).toBe(
+				rankGap(defined(bounds.get('n0')), defined(bounds.get('n1')), vertical),
+			);
+		},
+	);
+
+	it.each(DIRECTIONS)('fans B under A into a1 without any crossing in %s', (direction) => {
+		const { layout, routes } = selectedWitness(
+			direction,
+			['A', 'B'],
+			[
+				['a1', 'A'],
+				['b1', 'B'],
+				['b2', 'B'],
+				['b3', 'B'],
+			],
+			[
+				['b1', 'a1'],
+				['b2', 'a1'],
+				['b3', 'a1'],
+			],
+		);
+		expect(routeBridgeAnalysis(layout.relations).crossings).toHaveLength(0);
+		// b2 sits exactly under a1, so its central port faces a1's.
+		expect(routes.get('b2-a1')).toHaveLength(2);
+		for (const points of routes.values()) {
+			expect(points.length).toBeLessThanOrEqual(4);
+			expect(monotone(points)).toBe(true);
+		}
+	});
+
+	it.each(DIRECTIONS)('chains rows of one lane through their facing faces in %s', (direction) => {
+		const { layout, bounds, routes, vertical } = selectedWitness(
+			direction,
+			['A', 'B'],
+			[
+				['a1', 'A'],
+				['a2', 'A'],
+				['a3', 'A'],
+				['b1', 'B'],
+			],
+			[
+				['a2', 'a1'],
+				['a3', 'a2'],
+			],
+		);
+		const lane = defined(layout.lanes?.find(({ id }) => id === 'A')).bounds;
+		for (const [child, parent] of [
+			['a2', 'a1'],
+			['a3', 'a2'],
+		] as const) {
+			const points = defined(routes.get(`${child}-${parent}`));
+			expect(points).toHaveLength(4);
+			expect(monotone(points)).toBe(true);
+			expect(insideBounds(lane, points)).toBe(true);
+			// Leaving and entering the facing faces spans exactly the gap between the two rows.
+			const travelled =
+				longitudinal(defined(points.at(-1)), vertical) - longitudinal(defined(points[0]), vertical);
+			expect(Math.abs(travelled)).toBe(
+				rankGap(defined(bounds.get(child)), defined(bounds.get(parent)), vertical),
+			);
+		}
+	});
+
+	it.each(DIRECTIONS)(
+		'keeps the bridge-free U arc when a facing local leg would cross a lane message in %s',
+		(direction) => {
+			// Review witness: the facing leg of n6→n2 would cross n5→n3; the historical arc does not.
+			const { layout } = selectedWitness(
+				direction,
+				['L0', 'L1'],
+				[
+					['n2', 'L0'],
+					['n3', 'L0'],
+					['n5', 'L1'],
+					['n6', 'L0'],
+				],
+				[
+					['n5', 'n3'],
+					['n6', 'n2'],
+				],
+			);
+			expect(routeBridgeAnalysis(layout.relations).crossings).toHaveLength(0);
+		},
+	);
 
 	it('routes linked dependencies in document lane order', () => {
 		const document = transverseDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
@@ -279,7 +448,7 @@ describe('transverse shared lane layout', () => {
 		expect(validateSharedLaneGeometry(prepared.graph, altered)).toContain(expected);
 	});
 
-	it('validates a candidate with source before target on the cross axis', () => {
+	it('validates endpoints of one row on the faces turned to each other on the cross axis', () => {
 		const sides = transverseRouteSides({
 			sourceLane: 0,
 			targetLane: 0,
@@ -289,4 +458,18 @@ describe('transverse shared lane layout', () => {
 		});
 		expect(sides).toEqual({ source: 1, target: 1 });
 	});
+
+	it.each([
+		['a later', { x: 130, y: 100 }, { source: -1, target: 1, arcTarget: -1 }],
+		['an earlier', { x: -110, y: -60 }, { source: 1, target: -1, arcTarget: 1 }],
+	] as const)(
+		'validates a source on %s row on the facing faces or the U arc',
+		(_row, at, faces) => {
+			const target = { x: 10, y: 20, width: 80, height: 40 };
+			const source = { ...target, ...at };
+			expect(
+				transverseRouteSides({ sourceLane: 0, targetLane: 0, source, target, vertical: true }),
+			).toEqual(faces);
+		},
+	);
 });

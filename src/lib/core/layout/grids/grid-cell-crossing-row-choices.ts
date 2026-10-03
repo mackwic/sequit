@@ -3,6 +3,7 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
+import { railNestedBusAllocation } from './grid-cell-crossing-bus-orders';
 import { geometryKeyFromAllocation } from './grid-cell-crossing-identity';
 import { routedPortAllocation } from './grid-cell-crossing-port-order';
 
@@ -67,15 +68,29 @@ function rowRoutedInnermost(
 	};
 }
 
-/** Each allocation with its ports ordered by the routed runs first, then as declared. */
+/** Coherent bus/rail nesting and routed ports first, then the distinct declared allocations. */
+function* busAndPortChoices(
+	candidates: readonly GridCrossingAllocation[],
+	context: RowChoiceContext,
+): Generator<GridCrossingAllocation> {
+	const nested = candidates.map((candidate) =>
+		railNestedBusAllocation(context.input, candidate, context.active),
+	);
+	for (const candidate of nested)
+		yield routedPortAllocation(context.input, candidate, context.active);
+	for (const [index, candidate] of candidates.entries())
+		if (nested[index] !== candidate)
+			yield routedPortAllocation(context.input, candidate, context.active);
+	yield* nested;
+	for (const [index, candidate] of candidates.entries())
+		if (nested[index] !== candidate) yield candidate;
+}
+
 function* uniqueCandidates(
 	candidates: readonly GridCrossingAllocation[],
 	context: RowChoiceContext,
 ): Generator<GridCrossingAllocation> {
-	const routed = candidates.map((candidate) =>
-		routedPortAllocation(context.input, candidate, context.active),
-	);
-	for (const candidate of [...routed, ...candidates]) {
+	for (const candidate of busAndPortChoices(candidates, context)) {
 		const key = geometryKeyFromAllocation(candidate, context.busRelevant);
 		if (context.seen.has(key)) continue;
 		context.seen.add(key);

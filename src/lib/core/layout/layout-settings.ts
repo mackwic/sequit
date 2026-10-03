@@ -19,5 +19,9 @@ export const BRIDGE_CLEARANCE = 6;
 export const JUNCTION_PORT_SPACING = 12;
 export const JUNCTION_PORT_INSET = 8;
 export const RAIL_SPACING = 24;
+/** Minimum visible air between a route parallel to a group frame and that frame. */
+export const GROUP_SHELL_CLEARANCE = RAIL_SPACING / 2;
+/** Smallest pitch of distinct longitudinal passages in a shared frame strip. */
+export const MIN_PASSAGE_SPACING = RAIL_SPACING / 4;
 export const PORT_SPACING = 48;
 export const PORT_INSET = 24;

@@ -119,16 +119,17 @@ export function layerLinks(
 		let passage = reserve(relation) ?? arrivals.get(relation.to);
 		if (passage === undefined) {
 			passage = reserve.outer(relation, outside + RAIL_SPACING);
-			outside = passage;
+			outside = Math.max(outside, passage);
 		}
 		if (target.kind === EndpointKind.Junction) arrivals.set(relation.to, passage);
 		passages.set(relation, passage);
 	}
+	const finalPassages = reserve.finish(passages);
 	return links.map(({ relation, sourceLayer, targetLayer }) => ({
 		relation,
 		sourceLayer,
 		targetLayer,
-		passage: passages.get(relation),
+		passage: finalPassages.get(relation),
 	}));
 }
 

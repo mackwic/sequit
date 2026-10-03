@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import { defined, type LogicDocument } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
-import { RegionGeometryDiagnosticCode } from '../../../../src/lib/core/layout/geometry/region-geometry-diagnostic';
 import {
 	crossingIncidence,
 	crossingMetricDemands,
@@ -72,6 +71,7 @@ function leafPiece(result: RegionLayoutSelected) {
 }
 
 describe('direct group member crossing an internal grid cell', () => {
+	// Cell b lies right above cell d: the crossing leaves b by its bottom and enters d by its top.
 	it.each([
 		{ from: 'b', to: 'd', owners: ['b', 'grid', 'd'] },
 		{ from: 'd', to: 'b', owners: ['d', 'grid', 'b'] },
@@ -86,14 +86,14 @@ describe('direct group member crossing an internal grid cell', () => {
 			const route = defined(result.layout.relations.find(({ id }) => id === 'group-crossing'));
 			let port = defined(route.points[0]);
 			if (to === 'b') port = defined(route.points.at(-1));
-			expect(port.x).toBe(member.bounds.x + member.bounds.width);
-			expect(port.y).toBeGreaterThan(member.bounds.y);
-			expect(port.y).toBeLessThan(member.bounds.y + member.bounds.height);
-			expect(member.bounds.x).toBeGreaterThan(group.bounds.x);
-			expect(member.bounds.x + member.bounds.width).toBeLessThan(
-				group.bounds.x + group.bounds.width,
+			expect(port.y).toBe(member.bounds.y + member.bounds.height);
+			expect(port.x).toBeGreaterThan(member.bounds.x);
+			expect(port.x).toBeLessThan(member.bounds.x + member.bounds.width);
+			expect(member.bounds.y).toBeGreaterThan(group.bounds.y);
+			expect(member.bounds.y + member.bounds.height).toBeLessThan(
+				group.bounds.y + group.bounds.height,
 			);
-			expect(group.bounds.x + group.bounds.width).toBeLessThan(cell.bounds.x + cell.bounds.width);
+			expect(group.bounds.y + group.bounds.height).toBeLessThan(cell.bounds.y + cell.bounds.height);
 			expect(
 				result.ownedRoutes
 					.filter(({ relationId }) => relationId === 'group-crossing')
@@ -108,7 +108,7 @@ describe('direct group member crossing an internal grid cell', () => {
 				result.portals.find(
 					({ relationId, regionId }) => relationId === 'group-crossing' && regionId === 'b',
 				)?.side,
-			).toBe(RegionPortalSide.Right);
+			).toBe(RegionPortalSide.Bottom);
 		},
 	);
 
@@ -206,8 +206,8 @@ describe('direct group member crossing an internal grid cell', () => {
 					return {
 						...element,
 						bounds: {
-							x: group.bounds.x + group.bounds.width + 8,
-							y: anchor.y - 8,
+							x: anchor.x - 8,
+							y: group.bounds.y + group.bounds.height + 8,
 							width: 16,
 							height: 16,
 						},
@@ -218,19 +218,24 @@ describe('direct group member crossing an internal grid cell', () => {
 		expect(validateNestedRegionLeafIncidents(model, damaged)).toBe(
 			'Relation group-crossing source incident in leaf b crosses foreign node b-obstacle.',
 		);
-		const blocked: LogicDocument = {
+		// A sibling laid out beside the member used to mask its gutter-side exit; the member now
+		// leaves by its bottom face towards d, past the sibling, and both validators accept it.
+		const beside: LogicDocument = {
 			...document,
 			nodes: document.nodes.map((node) => {
 				if (node.id !== 'b-obstacle') return node;
 				return { ...node, layoutOrder: orderKey('a3') };
 			}),
 		};
-		expect(attempt(blocked).result).toMatchObject({
-			status: RegionCompositionStatus.Unknown,
-			code: RegionGeometryDiagnosticCode.GridCrossingEntersElement,
-			regionId: 'grid',
-			reason: 'Cross-cell relation group-crossing enters element b-obstacle.',
-		});
+		const besideResult = selected(beside).result;
+		const member = defined(besideResult.layout.elements.find(({ id }) => id === 'b'));
+		const sibling = defined(besideResult.layout.elements.find(({ id }) => id === 'b-obstacle'));
+		expect(sibling.bounds.x).toBeGreaterThan(member.bounds.x + member.bounds.width);
+		const exit = defined(
+			besideResult.layout.relations.find(({ id }) => id === 'group-crossing'),
+		).points;
+		expect(defined(exit[0]).y).toBe(member.bounds.y + member.bounds.height);
+		expect(defined(exit[1]).x).toBe(defined(exit[0]).x);
 	});
 
 	it('rejects a member incident that exits and reenters its parent group', () => {
@@ -239,8 +244,8 @@ describe('direct group member crossing an internal grid cell', () => {
 		const group = defined(result.layout.elements.find(({ id }) => id === 'cell-group'));
 		const anchor = defined(piece.points[0]);
 		const portal = defined(piece.points.at(-1));
-		const outside = group.bounds.x + group.bounds.width + 8;
-		const inside = group.bounds.x + group.bounds.width - 8;
+		const outside = group.bounds.y + group.bounds.height + 8;
+		const inside = group.bounds.y + group.bounds.height - 8;
 		const damaged = {
 			...result,
 			ownedRoutes: result.ownedRoutes.map((route) => {
@@ -249,10 +254,10 @@ describe('direct group member crossing an internal grid cell', () => {
 					...route,
 					points: [
 						anchor,
-						{ x: outside, y: anchor.y },
-						{ x: outside, y: anchor.y + 8 },
-						{ x: inside, y: anchor.y + 8 },
-						{ x: inside, y: anchor.y },
+						{ x: anchor.x, y: outside },
+						{ x: anchor.x + 8, y: outside },
+						{ x: anchor.x + 8, y: inside },
+						{ x: anchor.x, y: inside },
 						portal,
 					],
 				};
@@ -272,7 +277,7 @@ describe('direct group member crossing an internal grid cell', () => {
 			...result,
 			portals: result.portals.map((portal) => {
 				if (portal.relationId !== 'group-crossing' || portal.regionId !== 'b') return portal;
-				return { ...portal, point: { ...portal.point, y: portal.point.y + 8 } };
+				return { ...portal, point: { ...portal.point, x: portal.point.x + 8 } };
 			}),
 		};
 		expect(validateNestedRegionLeafIncidents(model, offLevel)).toBe(
@@ -284,7 +289,7 @@ describe('direct group member crossing an internal grid cell', () => {
 				...result.layout,
 				elements: result.layout.elements.map((element) => {
 					if (element.id !== group.id) return element;
-					return { ...element, bounds: { ...element.bounds, x: anchor.x + 1 } };
+					return { ...element, bounds: { ...element.bounds, y: anchor.y + 1 } };
 				}),
 			},
 		};

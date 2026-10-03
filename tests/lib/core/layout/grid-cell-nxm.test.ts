@@ -94,7 +94,7 @@ describe('grid bus allocation', () => {
 		expect(reversed.edges).toEqual(resources.edges);
 		expect(reversed.gutterIds).toEqual([['a-c', 'a-b'], ['a-b'], ['c-f', 'a-c']]);
 	});
-	it('selects a noncanonical bus after every canonical order fails without row alternatives', () => {
+	it('leaves the bus to the one top-row crossing that skips a column', () => {
 		const source = {
 			...nxmThreeByTwoDocument(),
 			relations: [
@@ -123,25 +123,22 @@ describe('grid bus allocation', () => {
 		if (result.status !== GridCellLayoutStatus.Selected)
 			throw new Error(`${result.status}: ${result.reason}`);
 		expect(result.allocation.rowTrackByRelationId?.[0]?.size ?? 0).toBe(0);
-		const order = [...result.allocation.busTrackByRelationId]
-			.sort((left, right) => left[1] - right[1])
-			.map(([id]) => id);
-		expect(order).toEqual(['r1', 'r0', 'r2']);
-		const phase = result.witness.phases[1];
-		expect(result.witness.phases[0]?.exhaustive).toBe(true);
-		expect(phase?.exhaustive).toBe(false);
-		expect(phase).toMatchObject({
-			totalGeometries: '257',
-			totalGeometriesKind: 'lower-bound',
-		});
-		expect(phase?.exploredGeometries).toBeLessThan(256);
-		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
-		expect(
-			result.witness.rejectedAlternatives.filter(
-				({ phaseId, busOrder }) =>
-					phaseId === CrossingAllocationPhaseId.Reallocate && busOrder.join() === 'r0,r1,r2',
-			),
-		).toHaveLength(64);
+		// r0 and r2 join neighbouring columns through the gap between them, inside the top row;
+		// r1 skips the middle column and climbs to the bus above the grid.
+		const row = defined(result.cells.find(({ row: cellRow }) => cellRow === 0)).bounds;
+		for (const id of ['r0', 'r2']) {
+			const ys = defined(result.layout.relations.find((route) => route.id === id)).points.map(
+				({ y }) => y,
+			);
+			expect(Math.min(...ys)).toBeGreaterThanOrEqual(row.y);
+			expect(Math.max(...ys)).toBeLessThanOrEqual(row.y + row.height);
+			expect(
+				result.portals.filter(({ relationId }) => relationId === id).map(({ side }) => side),
+			).toEqual([RegionPortalSide.Right, RegionPortalSide.Left]);
+		}
+		const bus = defined(result.layout.relations.find(({ id }) => id === 'r1')).points;
+		expect(Math.min(...bus.map(({ y }) => y))).toBeLessThan(row.y);
+		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.RowGutter);
 		expect(validatedBridges(result.layout.relations)).toEqual([]);
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
 		const permuted = prepareLayoutDocument({
@@ -278,51 +275,50 @@ describe('N by M grid composition', () => {
 		expect(result.layout.width).toBe(result.columnWidths.reduce((sum, width) => sum + width, 432));
 		expect(result.layout.height).toBe(result.rowHeights.reduce((sum, height) => sum + height, 336));
 		expect(validateGridCellGeometry(result, prepared.graph, input)).toBeUndefined();
+		// a-b joins neighbouring columns and c-f neighbouring rows: each runs through the gap between
+		// its two cells, on the faces looking at each other. a-c skips a column and keeps the gutters.
+		const sides = new Map(
+			['a-b', 'a-c', 'c-f'].map((id) => [
+				id,
+				result.portals.filter(({ relationId }) => relationId === id).map(({ side }) => side),
+			]),
+		);
+		expect(Object.fromEntries(sides)).toEqual({
+			'a-b': [RegionPortalSide.Right, RegionPortalSide.Left],
+			'a-c': [RegionPortalSide.Left, RegionPortalSide.Right],
+			'c-f': [RegionPortalSide.Bottom, RegionPortalSide.Top],
+		});
 		const resources = gridCrossingResources(input, source.relations);
-		for (const [column, ids] of resources.gutterIds.entries()) {
+		for (const column of [0, 2]) {
 			const cell = columns[column];
 			const edge = resources.edges.gutters[column];
-			const tracks = result.allocation.gutterTrackByRelationId[column];
-			if (cell === undefined || edge === undefined || tracks === undefined)
+			const track = result.allocation.gutterTrackByRelationId[column]?.get('a-c');
+			if (cell === undefined || edge === undefined || track === undefined)
 				throw new Error('Expected a placed gutter.');
-			for (const id of ids) {
-				const side = crossingEndpointSide(column, columns.length);
-				let frameX = cell.bounds.x + cell.bounds.width;
-				if (side === RegionPortalSide.Left) frameX = cell.bounds.x;
-				const track = tracks.get(id);
-				if (track === undefined) throw new Error('Missing crossing track.');
-				const railX = crossingRailX(edge, frameX, side, track);
-				expect(
-					result.layout.relations
-						.find((route) => route.id === id)
-						?.points.some(({ x }) => x === railX),
-				).toBe(true);
-				expect(Math.abs(railX - frameX)).toBeGreaterThanOrEqual(24);
-			}
+			const side = crossingEndpointSide(column, columns.length);
+			let frameX = cell.bounds.x + cell.bounds.width;
+			if (side === RegionPortalSide.Left) frameX = cell.bounds.x;
+			const railX = crossingRailX(edge, frameX, side, track);
+			expect(
+				result.layout.relations
+					.find((route) => route.id === 'a-c')
+					?.points.some(({ x }) => x === railX),
+			).toBe(true);
+			expect(Math.abs(railX - frameX)).toBeGreaterThanOrEqual(24);
 		}
 		for (const route of result.layout.relations) {
 			const ports = result.portals.filter(({ relationId }) => relationId === route.id);
 			expect(ports).toHaveLength(2);
 		}
-		expect(result.witness.winningPhase).toBe(CrossingAllocationPhaseId.Reallocate);
-		const reallocation = result.witness.phases[1];
-		if (reallocation === undefined) throw new Error('Missing reallocation evidence.');
-		expect(reallocation.selected).toBe(true);
-		expect(reallocation.exploredGeometries).toBeLessThan(256);
-		expect(reallocation.totalGeometries).toBe('96');
-		expect(reallocation.totalGeometriesKind).toBe('exact');
-		expect(result.witness.phases.slice(2).every(({ attempted }) => !attempted)).toBe(true);
 		expect(validatedBridges(result.layout.relations)).toHaveLength(0);
-		const firstColumn = result.cells.find(({ column }) => column === 0);
-		const secondColumn = result.cells.find(({ column }) => column === 1);
-		if (firstColumn === undefined || secondColumn === undefined)
-			throw new Error('Expected the two leading columns.');
 		const route = result.layout.relations.find(({ id }) => id === 'a-b');
-		if (route === undefined) throw new Error('Expected the inward crossing.');
-		const innerGutter = route.points.some(
-			({ x }) => x > firstColumn.bounds.x + firstColumn.bounds.width && x < secondColumn.bounds.x,
-		);
-		expect(innerGutter).toBe(true);
+		if (route === undefined) throw new Error('Expected the neighbouring crossing.');
+		const xs = route.points.map(({ x }) => x);
+		const ys = route.points.map(({ y }) => y);
+		expect(Math.min(...xs)).toBeGreaterThanOrEqual(first.bounds.x);
+		expect(Math.max(...xs)).toBeLessThanOrEqual(middle.bounds.x + middle.bounds.width);
+		expect(Math.min(...ys)).toBeGreaterThanOrEqual(first.bounds.y);
+		expect(Math.max(...ys)).toBeLessThanOrEqual(first.bounds.y + first.bounds.height);
 		const permuted = prepareLayoutDocument({
 			...source,
 			nodes: [...source.nodes].reverse(),

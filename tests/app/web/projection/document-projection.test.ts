@@ -537,6 +537,49 @@ describe('live document projection', () => {
 			for (const other of canvas.relations.slice(index + 1))
 				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
 	});
+	it('avoids the same-lane and inter-lane crossing through longitudinal faces from the real projection', async () => {
+		const source = collaborativeFixture(CollaborativeFixture.TwoBoxes, 'room');
+		const first = defined(source.nodes[0]);
+		const document: LogicDocument = {
+			...source,
+			persistenceFormat: LANE_PERSISTENCE_FORMAT,
+			presentation: {
+				schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
+				policy: LayoutPolicy.Layered,
+				laneOrientation: LaneOrientation.Parallel,
+				growth: LaneGrowth.Auto,
+				lanes: [
+					{ id: 'A', label: 'A', layoutOrder: orderKey('a0') },
+					{ id: 'B', label: 'B', layoutOrder: orderKey('a1') },
+				],
+			},
+			nodes: [
+				...source.nodes.map((node) => ({ ...node, laneId: 'A' })),
+				{ ...first, id: 'C', laneId: 'B', layoutOrder: orderKey('a3') },
+			],
+			relations: [
+				{ id: 'internal', from: 'A', to: 'B' },
+				{ id: 'first-cross', from: 'A', to: 'C' },
+				{ id: 'second-cross', from: 'B', to: 'C' },
+			],
+		};
+		const projection = createSharedCanvasProjection(document);
+		const canvas = await projection.createCanvasModel(
+			layoutMeasurementsForCanvas(projection.measurementModel),
+		);
+		expect(canvas.relations.map(({ id }) => id).sort()).toEqual([
+			'first-cross',
+			'internal',
+			'second-cross',
+		]);
+		// Consecutive same-lane rows meet directly instead of crossing an inter-lane passage.
+		const bridges = validatedBridges(canvas.relations);
+		expect(bridges).toHaveLength(0);
+		expect(defined(canvas.relations.find(({ id }) => id === 'internal')).points).toHaveLength(2);
+		for (const [index, route] of canvas.relations.entries())
+			for (const other of canvas.relations.slice(index + 1))
+				expect(unbridgedContacts(route, other, bridges)).toEqual([]);
+	});
 	it('reuses geometry for text/style changes of equal measured size and keeps each result immutable', async () => {
 		const calculate = vi.spyOn(layout, 'layoutGraphForProjection');
 		const source = collaborativeFixture(CollaborativeFixture.LinkedBoxes, 'room');

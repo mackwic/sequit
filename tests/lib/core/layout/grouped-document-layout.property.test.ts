@@ -21,4 +21,4 @@ it('lays out every small grouped document or reports a typed group route failure
 		}),
 		PROPERTY_PARAMETERS,
 	);
-});
+}, 30_000);

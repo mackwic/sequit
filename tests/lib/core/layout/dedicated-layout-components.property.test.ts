@@ -2,10 +2,12 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
+	defined,
 	EndpointKind,
 	JunctionOperator,
 	LayoutBias,
 	type LayoutConfiguration,
+	layoutConfiguration,
 	LayoutDirection,
 	type LogicDocument,
 	type LogicGroup,
@@ -15,6 +17,8 @@ import {
 	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
+import { validateDedicatedCandidate } from '../../../../src/lib/core/layout/dedicated-candidate-validation/validate';
+import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/lib/core/layout/layout-engine';
 import { PORT_INSET } from '../../../../src/lib/core/layout/layout-settings';
 import type {
 	Bounds,
@@ -22,6 +26,7 @@ import type {
 	LayoutResult,
 	Size,
 } from '../../../../src/lib/core/layout/layout-types';
+import { richAcyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
 import { PROPERTY_PARAMETERS } from '../../../support/builders/property-test-options';
 import {
 	boundsFor,
@@ -29,6 +34,7 @@ import {
 	coordinateAt,
 	layoutDocument,
 	overlaps,
+	prepareLayoutDocument,
 	progressesFromTo,
 } from '../../../support/harnesses/layout';
 
@@ -291,6 +297,35 @@ function scaledSizes(
 }
 
 describe('dedicated layout components', () => {
+	// Bounded by size: the 300-document census of 12-node documents in four directions is a
+	// workshop script, not a test (see the 2026-09-24 refactoring journal).
+	it('renders randomly grouped nodes and junctions without a passage failure', () => {
+		fc.assert(
+			fc.property(
+				richAcyclicLogicDocumentArbitrary({ maxNodes: 8 }),
+				fc.constantFrom(...Object.values(LayoutDirection)),
+				(document, direction) => {
+					const prepared = prepareLayoutDocument({
+						...document,
+						layout: defined(
+							layoutConfiguration(direction, LayoutBias.Top) ??
+								layoutConfiguration(direction, LayoutBias.Left),
+						),
+					});
+					const { layout, witness } = layoutWithDedicatedEngineAndRankOrderWitness(
+						prepared.graph,
+						prepared.ranks,
+						prepared.measurements,
+					);
+					// A rejected documentary layout may stay published only when witnessed unverified.
+					const validation = validateDedicatedCandidate({ ...prepared, layout });
+					if (!validation.valid) expect(witness.unverified, JSON.stringify(validation)).toBe(1);
+				},
+			),
+			PROPERTY_PARAMETERS,
+		);
+	}, 30_000);
+
 	it.each([
 		{ direction: LayoutDirection.TopToBottom, bias: LayoutBias.Top },
 		{ direction: LayoutDirection.BottomToTop, bias: LayoutBias.Bottom },

@@ -5,7 +5,10 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
-import { crossingBusOrderCandidates } from './grid-cell-crossing-bus-orders';
+import {
+	crossingBusOrderCandidates,
+	railNestedBusAllocation,
+} from './grid-cell-crossing-bus-orders';
 import { geometryKeyFromAllocation, geometryKeyFromOrders } from './grid-cell-crossing-identity';
 import {
 	FREE_TRACK,
@@ -87,37 +90,23 @@ function containmentOrder(
 	return order;
 }
 
-/** The containment allocation: gutters by interval inclusion on y, bus on x, ports documentary. */
+/** Gutters by interval inclusion on y; the upper bus follows the allocated rail intervals. */
 export function containmentCrossingAllocation(
 	input: CrossingAllocationInput,
 ): GridCrossingAllocation {
 	const relationOrder = new Map(input.crossingIds.map((id, index) => [id, index]));
-	const bus = allocateNestedTracks(
-		input.edges.topBus,
-		input.crossingIds.map((relationId) => {
-			const portal = defined(input.portalByRelationId.get(relationId));
-			return {
-				key: relationId,
-				order: defined(relationOrder.get(relationId)),
-				start: portal.source.point.x,
-				end: portal.target.point.x,
-			};
-		}),
-	);
-	const busOrder = Array<string>(input.crossingIds.length).fill(FREE_TRACK);
-	for (const relationId of input.crossingIds)
-		busOrder[defined(bus.trackByKey.get(relationId))] = relationId;
-	return allocationOf(
+	const allocation = allocationOf(
 		input.gutterIds.map((ids, column) =>
 			containmentOrder(input, defined(input.edges.gutters[column]), ids, relationOrder),
 		),
-		busOrder,
+		input.crossingIds,
 		input.incidence,
 		(input.rowGutterIds ?? []).map((ids, row) => {
 			if (ids.length === 0) return [];
 			return containmentOrder(input, defined(input.edges.rowGutters[row]), ids, relationOrder);
 		}),
 	);
+	return railNestedBusAllocation(input, allocation);
 }
 
 function* combineOrders(

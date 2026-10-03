@@ -6,9 +6,9 @@ import {
 	type MinimumEndpointExtentMetricDemand,
 } from '../contract/metric-demand';
 import type { RoutingEdge } from '../geometry/routing-edge';
-import type { Bounds, LayoutRelation, Point } from '../layout-types';
+import type { LayoutRelation, Point } from '../layout-types';
 import { RegionPortalSide } from '../regions/model/region-composition-types';
-import { edgeExtent, trackOffset } from '../resources/routing-resource-allocation';
+import { trackOffset } from '../resources/routing-resource-allocation';
 import { equal } from './grid-cell-geometry-primitives';
 
 const PORT_INSET = 16;
@@ -115,21 +115,10 @@ export function crossingFaceEdge(endpointId: string, incidenceCount: number): Ro
 	return { ownerId: endpointId, capacity: incidenceCount, spacing: CROSSING_SPACING };
 }
 
-/** Port y on a face: the port tracks are centred on the element. */
-export function crossingPortY(bounds: Bounds, edge: RoutingEdge, track: number): number {
-	const centre = bounds.y + bounds.height / 2;
-	const centring = (edgeExtent(edge) + edge.spacing) / 2;
-	return centre + trackOffset(edge, track) - centring;
-}
-
-/** The declared port positions of an endpoint's own face, in track order. */
-export function crossingPortPositions(
-	endpointId: string,
-	bounds: Bounds,
-	incidenceCount: number,
-): readonly number[] {
-	const edge = crossingFaceEdge(endpointId, incidenceCount);
-	return Array.from({ length: incidenceCount }, (_, track) => crossingPortY(bounds, edge, track));
+/** The least face extent that holds `incidenceCount` stacked crossing ports. */
+export function crossingFaceExtent(incidenceCount: number): number {
+	const span = CROSSING_SPACING * (incidenceCount - 1);
+	return PORT_INSET * 2 + span;
 }
 
 export function crossingIncidence(
@@ -151,15 +140,12 @@ export function crossingMetricDemands(
 ): readonly MinimumEndpointExtentMetricDemand[] {
 	return [...incidence]
 		.sort(([left], [right]) => compareCanonicalStrings(left, right))
-		.map(([endpointId, relations]) => {
-			const span = CROSSING_SPACING * (relations.length - 1);
-			return {
-				kind: MetricDemandKind.MinimumEndpointExtent,
-				endpointId,
-				axis: MetricAxis.Height,
-				minimum: PORT_INSET * 2 + span,
-			};
-		});
+		.map(([endpointId, relations]) => ({
+			kind: MetricDemandKind.MinimumEndpointExtent,
+			endpointId,
+			axis: MetricAxis.Height,
+			minimum: crossingFaceExtent(relations.length),
+		}));
 }
 
 function segmentOverlap(a: Point, b: Point, c: Point, d: Point): boolean {

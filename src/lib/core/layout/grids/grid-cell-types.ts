@@ -5,7 +5,6 @@ import type {
 	RegionCompositionSelected,
 	RegionCompositionStatus,
 	RegionPortal,
-	RegionPortalSide,
 } from '../regions/model/region-composition-types';
 import type {
 	RegionCompositionFailureEvidence,
@@ -38,9 +37,11 @@ export interface GridCellPlacement extends RegionChildPlacement {
 	readonly column: number;
 }
 
-export interface GridCellPortal extends RegionPortal<
-	RegionPortalSide.Left | RegionPortalSide.Right
-> {
+/**
+ * A crossing's cell portal: on the column's gutter side for a bus route, or on the side facing the
+ * adjacent cell of the same row or column for a route through the gap between them.
+ */
+export interface GridCellPortal extends RegionPortal {
 	readonly cellId: string;
 }
 

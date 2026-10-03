@@ -76,13 +76,16 @@ async function renderedComposition(page: Page) {
 	});
 }
 
-function bridgeOnlyDocument(): LogicDocument {
+function threeDependencyDocument(
+	title: string,
+	relations: LogicDocument['relations'],
+): LogicDocument {
 	const source = persistedComposedLeafBridgeDocument();
 	const laneIds = ['A', 'A', 'B', 'C'] as const;
 	return {
 		persistenceFormat: LANE_PERSISTENCE_FORMAT,
 		id: 'bridge-only-lanes',
-		title: 'Pont indispensable entre trois dépendances',
+		title,
 		layout: source.layout,
 		presentation: {
 			schemaVersion: LAYOUT_PRESENTATION_SCHEMA,
@@ -110,13 +113,27 @@ function bridgeOnlyDocument(): LogicDocument {
 				laneId,
 			};
 		}),
-		// a → c leaves lane A toward B while d → b comes back from C across B: the crossing needs a bridge.
-		relations: [
-			{ id: 'within-a', from: 'a', to: 'b' },
-			{ id: 'a-to-c', from: 'a', to: 'c' },
-			{ id: 'd-to-b', from: 'd', to: 'b' },
-		],
+		relations,
 	};
+}
+
+// a → c leaves lane A toward B while d → b comes back from C across B: the crossing needs a bridge.
+function bridgeOnlyDocument(): LogicDocument {
+	return threeDependencyDocument('Pont indispensable entre trois dépendances', [
+		{ id: 'within-a', from: 'a', to: 'b' },
+		{ id: 'a-to-c', from: 'a', to: 'c' },
+		{ id: 'd-to-b', from: 'd', to: 'b' },
+	]);
+}
+
+// Before L-04 the intra-lane relation left `a` by its lateral face and crossed `a-to-c`; its route
+// between rows on the longitudinal faces removes that crossing.
+function crossingFreeDocument(): LogicDocument {
+	return threeDependencyDocument('Trois dépendances sans croisement', [
+		{ id: 'within-a', from: 'a', to: 'b' },
+		{ id: 'a-to-c', from: 'a', to: 'c' },
+		{ id: 'b-to-c', from: 'b', to: 'c' },
+	]);
 }
 
 test('the persisted composed leaf uses its bridge-free portal route and reloads identically', async ({
@@ -147,25 +164,42 @@ test('the persisted composed leaf uses its bridge-free portal route and reloads 
 	expect(await renderedComposition(page)).toEqual(before);
 });
 
-test('a persisted three-dependency lane crossing renders its necessary bridge', async ({
-	page,
-}, info) => {
+async function lanePaths(page: Page, document: LogicDocument): Promise<readonly string[]> {
 	await page.setViewportSize({ width: 1920, height: 1200 });
 	const room = `e2e-${crypto.randomUUID()}`;
-	await seedRoom(room, CollaborativeFixture.LinkedBoxes, bridgeOnlyDocument());
+	await seedRoom(room, CollaborativeFixture.LinkedBoxes, document);
 	await page.goto(`/atelier/collaboration?room=${room}`);
 	await expect(page.locator('[data-graph-stage]')).toBeVisible();
 	await expect(page.locator('[data-node-id]')).toHaveCount(4);
 	await expect(page.locator('[data-relation-id]')).toHaveCount(3);
 	await expect(page.locator('[data-layout-diagnostic]')).toHaveCount(0);
 	await expect(page.locator('[data-source-diagnostic]')).toHaveCount(0);
-	const paths = await page
+	return page
 		.locator('[data-relation-id]')
 		.evaluateAll((routes) => routes.map((route) => route.getAttribute('d') ?? ''));
+}
+
+test('a persisted three-dependency lane crossing renders its necessary bridge', async ({
+	page,
+}, info) => {
+	const paths = await lanePaths(page, bridgeOnlyDocument());
 	expect(paths.some((path) => /\bA 6 6 /.test(path))).toBe(true);
 	const screenshot = info.outputPath('persisted-lane-necessary-bridge.png');
 	await page.screenshot({ path: screenshot });
 	await info.attach('persisted-lane-necessary-bridge', {
+		path: screenshot,
+		contentType: 'image/png',
+	});
+});
+
+test('a persisted three-dependency lane document without crossing renders no bridge', async ({
+	page,
+}, info) => {
+	const paths = await lanePaths(page, crossingFreeDocument());
+	for (const path of paths) expect(path).not.toMatch(/\bA 6 6 /);
+	const screenshot = info.outputPath('persisted-lane-crossing-free.png');
+	await page.screenshot({ path: screenshot });
+	await info.attach('persisted-lane-crossing-free', {
 		path: screenshot,
 		contentType: 'image/png',
 	});

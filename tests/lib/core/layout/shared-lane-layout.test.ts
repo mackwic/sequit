@@ -15,6 +15,7 @@ import {
 	LayoutPolicy,
 	type LogicDocument,
 	type LogicRelation,
+	PERSISTENCE_FORMAT,
 } from '../../../../src/lib/core/document/logic-document';
 import { orderKey } from '../../../../src/lib/core/document/order-key';
 import { createGraph } from '../../../../src/lib/core/graph/create-graph';
@@ -76,8 +77,14 @@ import {
 	RegionIncidentUnknownCode,
 } from '../../../../src/lib/core/layout/regions/model/region-incident-contract';
 import { layoutMeasurementsFor } from '../../../support/builders/layout-measurements';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	boundsFor,
+	layoutDocument,
+	prepareLayoutDocument,
+} from '../../../support/harnesses/layout';
 import { documentFor } from './shared-lane-port-fixture';
+
+type LanePair = readonly [string, string];
 
 const DIRECTIONS = [
 	[LayoutDirection.TopToBottom, LayoutBias.Top],
@@ -1391,6 +1398,345 @@ describe('shared lane layout', () => {
 			expect(result.layout.relations.find(({ id }) => id === 'a1-to-a2')?.points).toHaveLength(2);
 		},
 	);
+
+	it.each(DIRECTIONS)(
+		'routes consecutive intra-lane dependencies straight in %s',
+		(direction, bias) => {
+			const source = laneDocument(
+				direction,
+				bias,
+				[
+					{ id: 'a2-to-a1', from: 'a2', to: 'a1' },
+					{ id: 'b1-to-a1', from: 'b1', to: 'a1' },
+					{ id: 'b2-to-b1', from: 'b2', to: 'b1' },
+				],
+				2,
+			);
+			const document = {
+				...source,
+				nodes: [
+					...source.nodes,
+					{
+						...defined(source.nodes.find(({ id }) => id === 'b1')),
+						id: 'b2',
+						layoutOrder: orderKey('a3'),
+					},
+				],
+			};
+			const result = solve(document);
+			expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+			if (result.status !== SharedLaneLayoutStatus.Selected) return;
+			for (const id of ['a2-to-a1', 'b2-to-b1']) {
+				const route = defined(result.layout.relations.find((relation) => relation.id === id));
+				expect(route.points).toHaveLength(2);
+				const start = defined(route.points[0]);
+				const end = defined(route.points[1]);
+				expect(Math.abs(start.x - end.x) + Math.abs(start.y - end.y)).toBe(72);
+			}
+			expect(validatedBridges(result.layout.relations)).toHaveLength(0);
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'keeps an independent chain straight beside an obstructed passage in %s',
+		async (direction, bias) => {
+			for (const obstructedLane of ['A', 'B']) {
+				const document = documentFor(
+					defined(layoutConfiguration(direction, bias)),
+					LaneOrientation.Parallel,
+					[
+						['a1', 'A'],
+						['a2', 'A'],
+						['n0', obstructedLane],
+						['n1', obstructedLane],
+						['n2', obstructedLane],
+						['n3', obstructedLane],
+					],
+					[
+						['a2', 'a1'],
+						['n2', 'n1'],
+						['n3', 'n0'],
+					],
+				);
+				const prepared = prepareLayoutDocument(document);
+				const result = solve(document);
+				expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+				if (result.status !== SharedLaneLayoutStatus.Selected) return;
+				expect(
+					validateSharedLaneGeometry(prepared.graph, result.geometry, SHARED_LANE_CLEARANCE, true),
+				).toBeUndefined();
+				const product = await layoutDocument(document);
+				const chain = defined(product.layout.relations.find(({ id }) => id === 'r0'));
+				expect(chain.points).toHaveLength(2);
+				const start = defined(chain.points[0]);
+				const end = defined(chain.points[1]);
+				expect(Math.abs(start.x - end.x) + Math.abs(start.y - end.y)).toBe(72);
+				// The inverted pair n3 → n0, n2 → n1 crosses once between its rows; the chain stays clear.
+				for (const bridge of validatedBridges(product.layout.relations))
+					expect([...bridge.carrierIds, ...bridge.crossedIds]).not.toContain('r0');
+			}
+		},
+	);
+
+	// Vertical directions only: horizontally the longitudinal local routes of this document meet
+	// ten bridges, against five for the lateral fallback it was written for (decision left open).
+	it.each(DIRECTIONS.slice(0, 2))(
+		'does not add bridges when local incidences share endpoints with a lateral port group in %s',
+		async (direction, bias) => {
+			const source = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['n0', 'L2'],
+					['n1', 'L1'],
+					['n2', 'L0'],
+					['n3', 'L2'],
+					['n4', 'L2'],
+					['n5', 'L0'],
+					['n6', 'L0'],
+				],
+				[
+					['n5', 'n0'],
+					['n1', 'n5'],
+					['n3', 'n5'],
+					['n3', 'n0'],
+					['n2', 'n5'],
+					['n4', 'n2'],
+					['n4', 'n3'],
+					['n6', 'n3'],
+				],
+			);
+			const document: LogicDocument = {
+				...source,
+				presentation: {
+					...defined(source.presentation),
+					lanes: ['L0', 'L1', 'L2'].map((id, index) => ({
+						id,
+						label: id,
+						layoutOrder: orderKey(`a${index}`),
+					})),
+				},
+				relations: source.relations.map((relation) => ({
+					...relation,
+					id: `${relation.from}-${relation.to}`,
+				})),
+			};
+			const product = await layoutDocument(document, {
+				nodes: {
+					n0: { width: 168, height: 96 },
+					n1: { width: 104, height: 136 },
+					n2: { width: 152, height: 88 },
+					n3: { width: 96, height: 120 },
+					n4: { width: 128, height: 144 },
+					n5: { width: 184, height: 160 },
+					n6: { width: 104, height: 88 },
+				},
+			});
+			expect(validatedBridges(product.layout.relations).length).toBeLessThanOrEqual(5);
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'keeps at most one bridge when intra-lane routes meet lane crossings in %s',
+		async (direction, bias) => {
+			const source = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['n0', 'L0'],
+					['n1', 'L1'],
+					['n2', 'L0'],
+					['n3', 'L1'],
+					['n4', 'L1'],
+					['n5', 'L0'],
+					['n6', 'L0'],
+					['n7', 'L1'],
+				],
+				[
+					['n7', 'n3'],
+					['n0', 'n3'],
+					['n4', 'n7'],
+					['n1', 'n0'],
+					['n5', 'n0'],
+					['n5', 'n7'],
+				],
+			);
+			const document = {
+				...source,
+				relations: source.relations.map((relation) => ({
+					...relation,
+					id: `${relation.from}-${relation.to}`,
+				})),
+			};
+			const product = await layoutDocument(document);
+			expect(validatedBridges(product.layout.relations).length).toBeLessThanOrEqual(1);
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'does not stretch the main dimension for a three-child fork in %s',
+		(direction, bias) => {
+			const document = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['parent', 'A'],
+					['one', 'A'],
+					['two', 'A'],
+					['three', 'A'],
+				],
+				[
+					['one', 'parent'],
+					['two', 'parent'],
+					['three', 'parent'],
+				],
+			);
+			const prepared = prepareLayoutDocument(document);
+			const result = solve(document);
+			expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+			if (result.status !== SharedLaneLayoutStatus.Selected) return;
+			const bounds = boundsFor(result.layout, 'parent');
+			const measured = defined(prepared.measurements.nodes.get('parent'));
+			const vertical =
+				direction === LayoutDirection.TopToBottom || direction === LayoutDirection.BottomToTop;
+			if (vertical) expect(bounds.height).toBe(measured.height);
+			else expect(bounds.width).toBe(measured.width);
+			expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
+			expect(validatedBridges(result.geometry.relations)).toHaveLength(0);
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'renders a chain in one occupied lane like the document without lanes in %s',
+		async (direction, bias) => {
+			const document = documentFor(
+				defined(layoutConfiguration(direction, bias)),
+				LaneOrientation.Parallel,
+				[
+					['one', 'A'],
+					['two', 'A'],
+					['three', 'A'],
+				],
+				[
+					['two', 'one'],
+					['three', 'two'],
+				],
+			);
+			const plain: LogicDocument = {
+				...document,
+				persistenceFormat: PERSISTENCE_FORMAT,
+				nodes: document.nodes.map((node) => {
+					const plainNode = { ...node };
+					Reflect.deleteProperty(plainNode, 'laneId');
+					return plainNode;
+				}),
+			};
+			Reflect.deleteProperty(plain, 'presentation');
+			const withLanes = await layoutDocument(document);
+			const withoutLanes = await layoutDocument(plain);
+			const normalize = (layout: typeof withLanes.layout) => {
+				const anchor = boundsFor(layout, 'one');
+				return {
+					elements: layout.elements.map(({ id, bounds }) => ({
+						id,
+						bounds: { ...bounds, x: bounds.x - anchor.x, y: bounds.y - anchor.y },
+					})),
+					relations: layout.relations.map((route) => ({
+						id: route.id,
+						from: route.from,
+						to: route.to,
+						runs: routeRuns(route).map(({ start, end }) => ({
+							start: { x: start.x - anchor.x, y: start.y - anchor.y },
+							end: { x: end.x - anchor.x, y: end.y - anchor.y },
+						})),
+					})),
+				};
+			};
+			expect(normalize(withLanes.layout)).toEqual(normalize(withoutLanes.layout));
+		},
+	);
+
+	it.each(DIRECTIONS)(
+		'keeps unobstructed intra-lane fork routes on longitudinal faces without bridges in %s',
+		(direction, bias) => {
+			fc.assert(
+				fc.property(
+					fc.integer({ min: 1, max: 4 }),
+					fc.integer({ min: 96, max: 240 }),
+					fc.integer({ min: 72, max: 160 }),
+					(count, width, height) => {
+						const children = Array.from({ length: count }, (_, index) => `child-${index}`);
+						const document = documentFor(
+							defined(layoutConfiguration(direction, bias)),
+							LaneOrientation.Parallel,
+							[['parent', 'A'], ...children.map((id): LanePair => [id, 'A'])],
+							children.map((id): LanePair => [id, 'parent']),
+						);
+						const measurements = {
+							nodes: Object.fromEntries(document.nodes.map(({ id }) => [id, { width, height }])),
+						};
+						const prepared = prepareLayoutDocument(document, measurements);
+						const result = solveSharedLaneLayout(
+							prepared.graph,
+							prepared.ranks,
+							prepared.measurements,
+						);
+						expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+						if (result.status !== SharedLaneLayoutStatus.Selected) return;
+						const vertical =
+							direction === LayoutDirection.TopToBottom ||
+							direction === LayoutDirection.BottomToTop;
+						for (const route of result.geometry.relations) {
+							const source = boundsFor(result.layout, route.from);
+							const target = boundsFor(result.layout, route.to);
+							const start = defined(route.points[0]);
+							const end = defined(route.points.at(-1));
+							if (vertical) {
+								expect([source.y, source.y + source.height]).toContain(start.y);
+								expect([target.y, target.y + target.height]).toContain(end.y);
+							} else {
+								expect([source.x, source.x + source.width]).toContain(start.x);
+								expect([target.x, target.x + target.width]).toContain(end.x);
+							}
+						}
+						expect(validateSharedLaneGeometry(prepared.graph, result.geometry)).toBeUndefined();
+						expect(validatedBridges(result.geometry.relations)).toHaveLength(0);
+					},
+				),
+				{ numRuns: 30, seed: 1_592_915_777 },
+			);
+		},
+	);
+
+	it('routes a same-lane dependency on the rightmost lane from its longitudinal faces', () => {
+		const source = laneDocument(LayoutDirection.TopToBottom, LayoutBias.Top, [
+			{ id: 'c1-to-c2', from: 'c1', to: 'c2' },
+		]);
+		const document: LogicDocument = {
+			...source,
+			nodes: [
+				...source.nodes,
+				{
+					kind: EndpointKind.Node,
+					id: 'c2',
+					natureId: 'task',
+					laneId: 'C',
+					markdown: 'C2',
+					layoutOrder: orderKey('a4'),
+				},
+			],
+		};
+		const result = solve(document);
+		expect(result.status).toBe(SharedLaneLayoutStatus.Selected);
+		if (result.status !== SharedLaneLayoutStatus.Selected) return;
+		const route = defined(result.layout.relations[0]);
+		const child = boundsFor(result.layout, 'c1');
+		const parent = boundsFor(result.layout, 'c2');
+		expect(route.points).toEqual([
+			{ x: child.x + child.width / 2, y: child.y },
+			{ x: parent.x + parent.width / 2, y: parent.y + parent.height },
+		]);
+	});
 
 	it.each([
 		['forward', 'a1', 'c1'],

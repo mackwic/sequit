@@ -165,11 +165,19 @@ function routeEndpoints(
 			target: target.bounds,
 			vertical: context.vertical,
 		});
+		// A local U arc may reach its target on the face its row turns toward, `arcTarget`.
+		let targetSide = physicalTransverseSide(sides.target, context.reverse);
+		const last = route.points.at(-1);
+		if (
+			last !== undefined &&
+			!attachedTransverse(last, target.bounds, context.vertical, targetSide)
+		)
+			targetSide = physicalTransverseSide(sides.arcTarget ?? sides.target, context.reverse);
 		const ends = {
 			from,
 			to,
 			source: physicalTransverseSide(sides.source, context.reverse),
-			target: physicalTransverseSide(sides.target, context.reverse),
+			target: targetSide,
 		};
 		return faceRouteEndpoints(route, context, ends, LONGITUDINAL_FACES);
 	}

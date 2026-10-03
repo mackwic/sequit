@@ -9,7 +9,8 @@ import {
 } from '../geometry/region-geometry-diagnostic';
 import type { LayoutElement, LayoutRelation, Point } from '../layout-types';
 import { routeCandidates } from '../regions/leaf/region-leaf-incident-geometry';
-import { RegionPortalSide } from '../regions/model/region-composition-types';
+import type { RegionPortalSide } from '../regions/model/region-composition-types';
+import { alongFace, facePoint } from './grid-cell-crossing-face';
 import { samePoint } from './grid-cell-geometry-primitives';
 import type { GridCellPlacement } from './grid-cell-types';
 
@@ -19,7 +20,7 @@ export interface GridCellIncident {
 	readonly endpointId: string;
 	readonly source: boolean;
 	readonly cell: GridCellPlacement;
-	readonly side: RegionPortalSide.Left | RegionPortalSide.Right;
+	readonly side: RegionPortalSide;
 	/** Global port on the endpoint's face. */
 	readonly port: Point;
 	/**
@@ -142,9 +143,8 @@ function routeIncident(
 	earlier: readonly BoxedRoute[],
 ): readonly Point[] {
 	const { bounds } = incident.cell;
-	let portalX = bounds.x;
-	if (incident.side === RegionPortalSide.Right) portalX += bounds.width;
-	const direct = [incident.port, { x: portalX, y: incident.port.y }];
+	const portal = facePoint(bounds, incident.side, alongFace(incident.port, incident.side));
+	const direct = [incident.port, portal];
 	if (incident.nested || clear(incident, direct, obstacles, earlier)) return direct;
 	const anchor = { x: incident.port.x - bounds.x, y: incident.port.y - bounds.y };
 	const canvas = { width: bounds.width, height: bounds.height, elements: [], relations: [] };

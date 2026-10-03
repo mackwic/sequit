@@ -17,7 +17,13 @@ import { layoutWithDedicatedEngineAndRankOrderWitness } from '../../../../src/li
 import type { LayoutResult } from '../../../../src/lib/core/layout/layout-types';
 import { validLogicDocument } from '../../../support/builders/logic-document';
 import { acyclicLogicDocumentArbitrary } from '../../../support/builders/logic-document-arbitrary';
-import { prepareLayoutDocument } from '../../../support/harnesses/layout';
+import {
+	boundsFor,
+	layoutDocument,
+	prepareLayoutDocument,
+} from '../../../support/harnesses/layout';
+import { referenceRuns } from './bridge-oracle-reference';
+import { deepShellSample } from './group-shell-deep-fixture';
 
 const biasByDirection: Record<LayoutDirection, LayoutBias> = {
 	[LayoutDirection.TopToBottom]: LayoutBias.Top,
@@ -431,3 +437,66 @@ it('keeps a junction component and an ordinary fork out of each other in every d
 			}
 	}
 }, 120_000);
+
+it.each(Object.values(LayoutDirection))(
+	'keeps a nested group route independent of a distant frame in %s',
+	async (direction) => {
+		const { document, overrides } = deepShellSample(3, direction, 36);
+		const combined: LogicDocument = {
+			...document,
+			nodes: [
+				...document.nodes,
+				...['p', 'q', 'r'].map((id, index) => ({
+					kind: EndpointKind.Node as const,
+					id,
+					natureId: 'goal',
+					markdown: id,
+					layoutOrder: orderKey(`b8${index}`),
+					...(index < 2 && { groupId: 'H' }),
+				})),
+			],
+			groups: [
+				...document.groups,
+				{ kind: EndpointKind.Group, id: 'H', label: 'H', layoutOrder: orderKey('b89') },
+			],
+			relations: [
+				...document.relations,
+				{ id: 'q-p', from: 'q', to: 'p' },
+				{ id: 'r-q', from: 'r', to: 'q' },
+				{ id: 'r-p', from: 'r', to: 'p' },
+			],
+		};
+		const alone = await layoutDocument(document, overrides);
+		const together = await layoutDocument(combined, {
+			...overrides,
+			groups: {
+				...overrides.groups,
+				H: { minimumWidth: 160, minimumHeight: 72, headerHeight: 36, padding: 24 },
+			},
+		});
+		const signature = (layout: LayoutResult) => {
+			const origin = boundsFor(layout, 'g0');
+			const local = ({ x, y }: { readonly x: number; readonly y: number }) => ({
+				x: x - origin.x,
+				y: y - origin.y,
+			});
+			return {
+				elements: layout.elements
+					.filter(({ id }) => id !== 'H' && !['p', 'q', 'r'].includes(id))
+					.map(({ id, bounds }) => ({ id, ...bounds, ...local(bounds) })),
+				routes: layout.relations
+					.filter(({ id }) => document.relations.some((relation) => relation.id === id))
+					.map((path) => ({
+						id: path.id,
+						runs: referenceRuns(path).map(({ start, end }) => ({
+							start: local(start),
+							end: local(end),
+						})),
+					})),
+			};
+		};
+		expect(validateDedicatedCandidate(alone).valid).toBe(true);
+		expect(validateDedicatedCandidate(together).valid).toBe(true);
+		expect(signature(together.layout)).toEqual(signature(alone.layout));
+	},
+);

@@ -398,15 +398,16 @@ describe('persisted composed incident bridge selection', () => {
 			{ carrierIds: ['cross'], crossedIds: ['lane-local'] },
 		]);
 		expect(validatedBridges(unbridged.layout.relations)).toEqual([]);
+		// L-03: `lane-local` joins its two adjacent transverse lanes directly (168 px, two bends less).
 		expect(layoutRouteCost(bridged.layout)).toEqual({
 			area: 834624,
-			routeLength: 1707.5,
-			bends: 10,
+			routeLength: 1539.5,
+			bends: 8,
 		});
 		expect(layoutRouteCost(unbridged.layout)).toEqual({
 			area: 834624,
-			routeLength: 1623.5,
-			bends: 10,
+			routeLength: 1455.5,
+			bends: 8,
 		});
 	});
 
@@ -648,13 +649,13 @@ describe('persisted composed incident bridge selection', () => {
 		// The geometry-first product search reaches a cheaper bridge-free detour within its budget.
 		expect(cold.searchWitness?.bestDetour).toEqual({
 			area: 888704,
-			bends: 14,
-			routeLength: 2606.6666666666665,
+			bends: 12,
+			routeLength: 2438.6666666666665,
 		});
 		expect(cold.searchWitness?.bestBridge).toEqual({
 			area: 888704,
-			bends: 14,
-			routeLength: 2710.6666666666665,
+			bends: 12,
+			routeLength: 2542.6666666666665,
 		});
 		expect(cold.searchWitness?.bestBridgeIndices).toEqual([0, 3]);
 		expect(cold.searchWitness?.bestDetourIndices).toEqual([1, 3]);

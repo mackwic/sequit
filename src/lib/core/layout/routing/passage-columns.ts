@@ -53,16 +53,17 @@ export function freeColumnIndex(
 	reservations: readonly PassageReservation[],
 	[targetLayer, sourceLayer]: LayerSpan,
 	coordinate: number,
+	spacing = RAIL_SPACING,
 ): number | undefined {
 	const index = insertionIndex(reservations, coordinate);
 	for (let before = index - 1; before >= 0; before -= 1) {
 		const held = defined(reservations[before]);
-		if (coordinate - held.coordinate >= RAIL_SPACING) break;
+		if (coordinate - held.coordinate >= spacing) break;
 		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return undefined;
 	}
 	for (let after = index; after < reservations.length; after += 1) {
 		const held = defined(reservations[after]);
-		if (held.coordinate - coordinate >= RAIL_SPACING) break;
+		if (held.coordinate - coordinate >= spacing) break;
 		if (held.targetLayer < sourceLayer && targetLayer < held.sourceLayer) return undefined;
 	}
 	return index;

@@ -35,6 +35,7 @@ import type {
 	CrossingAllocationInput,
 	GridCrossingAllocation,
 } from './grid-cell-crossing-allocation-types';
+import { cheaperRoute, cheaperSearch } from './grid-cell-crossing-cost';
 import {
 	type GridCrossingAllocationBudgets,
 	validatedGridCrossingAllocationBudgets,
@@ -44,6 +45,7 @@ import {
 	crossingPortalSpans,
 	crossingRoutes,
 	gridCrossingOwnedRoutes,
+	type GridCrossingRouting,
 	gridCrossingRouting,
 } from './grid-cell-crossing-routing';
 import { searchGridCrossingAllocations } from './grid-cell-crossing-search';
@@ -193,7 +195,7 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		(ids, row) => ids.length > 0 && edges.rowGutters[row] === undefined,
 	);
 
-	const routing = gridCrossingRouting({
+	const routingInput = {
 		rootId: input.rootId,
 		crossing,
 		columnCount,
@@ -207,7 +209,9 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 					model.leafByEndpointId.get(endpointId) !== input.cellByEndpointId.get(endpointId),
 			),
 		),
-	});
+	};
+	const routing = gridCrossingRouting(routingInput);
+	const direct = gridCrossingRouting({ ...routingInput, direct: true });
 	const elements: LayoutElement[] = cells.flatMap((cell) =>
 		cell.localLayout.elements.map((element) => ({
 			...element,
@@ -224,11 +228,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 			bounds: moveBounds(lane.bounds, cell.translation),
 		})),
 	);
-	const routed = (
+	const routeWith = (
+		chosen: GridCrossingRouting,
 		allocation: GridCrossingAllocation,
 		acceptBridges: boolean,
 	): RoutedGridCrossing => {
-		const routes = crossingRoutes(routing, allocation);
+		const routes = crossingRoutes(chosen, allocation);
 		const routesById = new Map(
 			[...localRoutes, ...routes.map(({ route }) => route)].map((route) => [route.id, route]),
 		);
@@ -261,6 +266,13 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		if (contact !== undefined) return { candidate, failure: contact };
 		return { candidate };
 	};
+	const gutterOnly = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
+		routeWith(routing, allocation, acceptBridges);
+	const routed = (allocation: GridCrossingAllocation, acceptBridges: boolean) =>
+		cheaperRoute(
+			gutterOnly(allocation, acceptBridges),
+			routeWith(direct, allocation, acceptBridges),
+		);
 	const crossingIds = crossing.map(({ id }) => id);
 	const allocationInput: CrossingAllocationInput = {
 		edges,
@@ -291,7 +303,12 @@ export function routePlacedGridCellDisposition(placed: PlacedGridCellInput): Gri
 		...allocationInput,
 		portalByRelationId: crossingPortalSpans(routing, canonical),
 	};
-	const search = searchGridCrossingAllocations(withSpans, routed, placed.allocationBudgets);
+	// The gutter-only search is the base result; the search that also tries the gap forms replaces
+	// it only when the base finds nothing, or with fewer crossings, then shorter, then fewer bends.
+	const budgets = placed.allocationBudgets;
+	let search = searchGridCrossingAllocations(withSpans, gutterOnly, budgets);
+	if (direct.directByRelationId.size > 0)
+		search = cheaperSearch(search, searchGridCrossingAllocations(withSpans, routed, budgets));
 	if ('selected' in search) {
 		const selected = search.selected;
 		return {

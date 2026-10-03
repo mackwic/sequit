@@ -21,6 +21,8 @@ interface PortIncidence {
 	readonly relationId: string;
 	readonly role: PortRole;
 	readonly sameLane: boolean;
+	/** A local U arc leaves and enters by the same side; facing local faces follow their rows. */
+	readonly localArc: boolean;
 	readonly oppositeHalf: number;
 	readonly laneOrder: number;
 	readonly oppositeRow: number;
@@ -116,6 +118,7 @@ function addIncidence(groups: Map<string, PortGroup>, input: IncidenceInput): vo
 		relationId: plan.id,
 		role,
 		sameLane: plan.sameLane,
+		localArc: plan.sameLane && plan.sourceSide === plan.targetSide,
 		oppositeHalf: incidenceHalf(endpoint, other),
 		laneOrder: -Math.abs(other.laneIndex - endpoint.laneIndex),
 		oppositeRow: other.row,
@@ -316,7 +319,7 @@ export function planSharedLanePorts(
 	const faces = incidentFaces(input, contracts, groups);
 	const incidentOffsetByFace = incidentOffsets(faces, relationOrder);
 	for (const group of groups.values()) {
-		const localOnly = group.incidences.every(({ sameLane }) => sameLane);
+		const localOnly = group.incidences.every(({ localArc }) => localArc);
 		group.incidences.sort((a, b) => compareIncidences(a, b, relationOrder, localOnly));
 		const count = group.incidences.length;
 		const side = physicalSide(input, group.side, groupFacesAlong);

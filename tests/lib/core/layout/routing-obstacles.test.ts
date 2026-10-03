@@ -26,7 +26,8 @@ const physicalSize = fc.record({
 	height: fc.integer({ min: 40, max: 180 }),
 });
 
-function keepsRowOrder(layout: VisualLayout): void {
+/** Rows may be reordered when that routes with fewer crossings; their spacing must hold. */
+function keepsRowSpacing(layout: VisualLayout): void {
 	const axis = axesFor(layout.direction).transverse;
 	let dimension: 'width' | 'height' = 'width';
 	if (axis === 'y') dimension = 'height';
@@ -34,9 +35,12 @@ function keepsRowOrder(layout: VisualLayout): void {
 		['p', 'q', 's'],
 		['u', 'v', 'w', 'g', 'x'],
 	]) {
-		for (let index = 1; index < row.length; index += 1) {
-			const before = layout.getById(defined(row[index - 1])).bounds;
-			const after = layout.getById(defined(row[index])).bounds;
+		const placed = row
+			.map((id) => layout.getById(id).bounds)
+			.toSorted((left, right) => left[axis] - right[axis]);
+		for (let index = 1; index < placed.length; index += 1) {
+			const before = defined(placed[index - 1]);
+			const after = defined(placed[index]);
 			expect(after[axis] - before[axis] - before[dimension]).toBeGreaterThanOrEqual(36);
 		}
 	}
@@ -127,7 +131,7 @@ it('keeps foreign routes clear of a physical junction with unequal neighboring n
 				AssertLayout(layout).routes().areOrthogonal().areAttachedToEndpoints().followLayoutFlow();
 				AssertLayout(layout).obstacles().haveClearance(24);
 				keepsLocalBranches(layout);
-				keepsRowOrder(layout);
+				keepsRowSpacing(layout);
 				const reordered = await layoutNodes({
 					...fixture,
 					...configuration,
@@ -163,7 +167,7 @@ it('keeps foreign routes outside fixed physical group envelopes with unequal nei
 					measurements,
 				);
 				wideGroupObstacle.assert(layout);
-				keepsRowOrder(layout);
+				keepsRowSpacing(layout);
 				const { layout: reordered } = await layoutDocument(
 					{
 						...fixture.document,
