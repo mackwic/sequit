@@ -53,7 +53,9 @@ async function openBoxDialog(page: Page, node: Locator): Promise<void> {
 /** The box being typed in place: it shows, has the focus, and gives the id the box will have. */
 async function typedBox(page: Page) {
 	const draft = page.locator('[data-node-draft]');
-	const content = draft.getByRole('textbox', { name: 'Contenu de la nouvelle boîte' });
+	const content = draft.getByRole('textbox', {
+		name: 'Contenu de la nouvelle boîte',
+	});
 	await expect(content).toBeFocused();
 	const id = await draft.getAttribute('data-node-draft');
 	if (id === null || id === '') throw new Error('The box being typed has no id');
@@ -367,7 +369,11 @@ test.describe('accessible canvas selection', () => {
 		await expect(menu).toHaveCount(0);
 
 		// An element already in the selection keeps the whole selection.
-		await group.click({ modifiers: ['Shift'], position: { x: 8, y: 8 }, force: true });
+		await group.click({
+			modifiers: ['Shift'],
+			position: { x: 8, y: 8 },
+			force: true,
+		});
 		await node.click({ button: 'right' });
 		await expect(node).toHaveAttribute('aria-pressed', 'true');
 		await expect(group).toHaveAttribute('aria-pressed', 'true');
@@ -507,8 +513,14 @@ test.describe('accessible canvas selection', () => {
 		// Every action shows its key, as in a dialog.
 		await expect(nodeBar.locator('kbd')).toHaveText(['C', 'E', /^(⌫|Suppr)$/]);
 
-		await group.click({ modifiers: ['Meta'], position: { x: 8, y: 8 }, force: true });
-		const selectionBar = page.getByRole('group', { name: 'Actions de la sélection' });
+		await group.click({
+			modifiers: ['Meta'],
+			position: { x: 8, y: 8 },
+			force: true,
+		});
+		const selectionBar = page.getByRole('group', {
+			name: 'Actions de la sélection',
+		});
 		await expect(selectionBar.getByRole('button')).toHaveText([/Supprimer/]);
 		await expect(nodeBar).toHaveCount(0);
 
@@ -521,14 +533,19 @@ test.describe('accessible canvas selection', () => {
 		await expect(dialog).toHaveCount(0);
 
 		await junction.click();
-		const junctionBar = page.getByRole('group', { name: 'Actions de la jonction' });
+		const junctionBar = page.getByRole('group', {
+			name: 'Actions de la jonction',
+		});
 		await expect(junctionBar.getByRole('button')).toHaveText([
 			/Créer un enfant/,
 			/Propriétés…/,
 			/Supprimer/,
 		]);
 		await junctionBar
-			.getByRole('button', { name: 'Supprimer la jonction word-ui-options', exact: true })
+			.getByRole('button', {
+				name: 'Supprimer la jonction word-ui-options',
+				exact: true,
+			})
 			.click();
 		await expect(junction).toHaveCount(0);
 		await expect(page.locator('[data-node-id]')).toHaveCount(24);
@@ -553,12 +570,16 @@ test.describe('accessible canvas selection', () => {
 		const relationCount = await page.locator('[data-relation-id]').count();
 		const relationPoint = await visibleRelationPoint(page, relationSelector);
 		await page.mouse.click(relationPoint.x, relationPoint.y);
-		const relationBar = page.getByRole('group', { name: 'Actions de la relation' });
+		const relationBar = page.getByRole('group', {
+			name: 'Actions de la relation',
+		});
 		await expect(relationBar.getByRole('button')).toHaveText([/Jonction/, /Supprimer/]);
 		await page.keyboard.press('j');
 
 		// The junction replaces the relation and opens its dialog with the default operator.
-		const dialog = page.getByRole('dialog', { name: 'Opérateur de la jonction' });
+		const dialog = page.getByRole('dialog', {
+			name: 'Opérateur de la jonction',
+		});
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByRole('radio', { name: 'OU exclusif' })).toBeChecked();
 		await expect(dialog.getByRole('radio', { name: 'OU exclusif' })).toBeFocused();
@@ -813,7 +834,10 @@ test.describe('accessible canvas selection', () => {
 	test('opens the keyboard shortcuts panel from its button or ?, never from a text field', async ({
 		page,
 	}) => {
-		const help = page.getByRole('button', { name: 'Raccourcis clavier', exact: true });
+		const help = page.getByRole('button', {
+			name: 'Raccourcis clavier',
+			exact: true,
+		});
 		const panel = page.getByRole('dialog', { name: 'Raccourcis clavier' });
 		await help.click();
 		await expect(panel).toBeVisible();
@@ -1038,11 +1062,12 @@ test.describe('box dialog editing and creation', () => {
 		const dialog = page.getByRole('dialog', { name: 'Propriétés de la boîte' });
 		const nature = dialog.getByLabel('Nature');
 		const currentNatureId = await nature.inputValue();
-		const options = await nature
-			.locator('option')
-			.evaluateAll((elements: HTMLOptionElement[]) =>
-				elements.map((element) => ({ id: element.value, label: element.textContent })),
-			);
+		const options = await nature.locator('option').evaluateAll((elements: HTMLOptionElement[]) =>
+			elements.map((element) => ({
+				id: element.value,
+				label: element.textContent,
+			})),
+		);
 		const nextNature = required(
 			options.find(({ id }) => id !== currentNatureId),
 			'Expected another nature to select',
@@ -1316,7 +1341,9 @@ test.describe('box dialog editing and creation', () => {
 			.getByRole('navigation', { name: 'Actions du canvas' })
 			.getByRole('button', { name: /^Nouvelles boîtes :/ });
 		await picker.click();
-		const menu = page.getByRole('menu', { name: 'Nature des nouvelles boîtes' });
+		const menu = page.getByRole('menu', {
+			name: 'Nature des nouvelles boîtes',
+		});
 		const items = menu.getByRole('menuitemradio');
 		const chosen = items.nth(1);
 		const label = (await chosen.textContent())?.trim() ?? '';
@@ -1338,9 +1365,10 @@ test.describe('box dialog editing and creation', () => {
 	test('types a child of a junction from its contextual action', async ({ page }) => {
 		const junction = page.locator('[data-junction-id="word-ui-options"]');
 		await junction.click();
-		const create = page
-			.getByRole('group', { name: 'Actions de la jonction' })
-			.getByRole('button', { name: 'Créer un enfant de word-ui-options', exact: true });
+		const create = page.getByRole('group', { name: 'Actions de la jonction' }).getByRole('button', {
+			name: 'Créer un enfant de word-ui-options',
+			exact: true,
+		});
 		await expect(create).toHaveAttribute('aria-keyshortcuts', 'c');
 		await create.click();
 		const { content, id } = await typedBox(page);
@@ -1364,7 +1392,11 @@ test.describe('box dialog editing and creation', () => {
 		// With the goal at the top, children grow below the box and siblings line up on its right.
 		const centreOf = async (locator: Locator) => {
 			const bounds = required((await locator.boundingBox()) ?? undefined, 'Missing geometry');
-			return { ...bounds, cx: bounds.x + bounds.width / 2, cy: bounds.y + bounds.height / 2 };
+			return {
+				...bounds,
+				cx: bounds.x + bounds.width / 2,
+				cy: bounds.y + bounds.height / 2,
+			};
 		};
 		const box = await centreOf(node);
 		const child = await centreOf(childHandle);
@@ -1416,6 +1448,12 @@ test.describe('box dialog editing and creation', () => {
 		await expect(node).toBeFocused();
 		await page.keyboard.press('ControlOrMeta+z');
 		await expect(header).not.toHaveText(label, { ignoreCase: true });
+
+		// The menu ends with the document's nature library.
+		await header.click();
+		await menu.getByRole('menuitem', { name: 'Gérer les natures du document' }).click();
+		await expect(menu).toHaveCount(0);
+		await expect(page.locator('[data-nature-manager]')).toBeVisible();
 	});
 
 	test('dragging a box names what releasing does, and refuses a cycle before letting go', async ({
@@ -1475,8 +1513,27 @@ test.describe('box dialog editing and creation', () => {
 		const prompt = page.getByRole('button', { name: 'À quoi pensez-vous ?' });
 		await expect(prompt).toBeVisible();
 		const invited = required((await prompt.boundingBox()) ?? undefined, 'Missing prompt');
+		// Its header previews the nature of the first box, and changes it like the side bar does.
+		const nature = page.locator('[data-empty-prompt-nature]');
+		const menu = page.getByRole('menu', {
+			name: 'Nature des nouvelles boîtes',
+		});
+		await nature.click();
+		await expect(nature).toHaveAttribute('aria-expanded', 'true');
+		await expect(menu.getByRole('menuitem', { name: 'Gérer les natures du document' })).toHaveCount(
+			1,
+		);
+		const other = menu.getByRole('menuitemradio', { checked: false }).first();
+		const label = (await other.textContent())?.trim() ?? '';
+		await other.click();
+		await expect(menu).toHaveCount(0);
+		await expect(nature).toBeFocused();
+		await expect(nature).toHaveText(label, { ignoreCase: true });
 		await prompt.click();
 		const { draft, content } = await typedBox(page);
+		await expect(draft.locator('[data-node-header]')).toHaveText(label, {
+			ignoreCase: true,
+		});
 		await expect(prompt).toHaveCount(0);
 		const typed = required((await draft.boundingBox()) ?? undefined, 'Missing draft');
 		expect(Math.abs(typed.x - invited.x)).toBeLessThan(2);
@@ -1560,12 +1617,21 @@ test('double-click types a box in place; Backspace and the delete action remove 
 	await existing.click();
 	const existingId = await existing.getAttribute('data-node-id');
 	await expect(page.getByRole('button', { name: 'Supprimer', exact: true })).toHaveCount(0);
-	await page.getByRole('button', { name: `Supprimer le nœud ${existingId}`, exact: true }).click();
+	await page
+		.getByRole('button', {
+			name: `Supprimer le nœud ${existingId}`,
+			exact: true,
+		})
+		.click();
 	await expect(page.locator('[data-node-id]')).toHaveCount(23);
 });
 
 for (const { kind, selector, membership } of [
-	{ kind: 'node', selector: '[data-node-id="traceable-edits"]', membership: 'data-node-group-id' },
+	{
+		kind: 'node',
+		selector: '[data-node-id="traceable-edits"]',
+		membership: 'data-node-group-id',
+	},
 	{
 		kind: 'junction',
 		selector: '[data-junction-id="word-ui-options"]',
@@ -1585,7 +1651,10 @@ for (const { kind, selector, membership } of [
 		const origin = await member.boundingBox();
 		const header = await group.locator('[data-group-header]').boundingBox();
 		if (!origin || !header) throw new Error('Missing geometry');
-		const drop = { x: origin.x + origin.width / 2, y: header.y + header.height / 2 };
+		const drop = {
+			x: origin.x + origin.width / 2,
+			y: header.y + header.height / 2,
+		};
 		expect(
 			await page.evaluate(
 				({ x, y }) =>

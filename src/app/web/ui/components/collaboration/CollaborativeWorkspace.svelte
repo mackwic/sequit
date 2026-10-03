@@ -336,6 +336,10 @@
 	function changeNature(nodeId: string, natureId: string) {
 		if (interactive) dispatch(nodeNatureUpdate(nodeId, natureId));
 	}
+	/** The nature new boxes take in this view, chosen from the side bar or the empty canvas. */
+	function chooseNextNature(natureId: string): void {
+		typing.natureId = natureId;
+	}
 	function deleteSelection() {
 		if (!interactive || canvas.editing) return;
 		const selected = sharedSelection(canvas.selection.values());
@@ -550,9 +554,7 @@
 			oncreate={() => {
 				openDraft({ near: canvas.relativeNodeCreationTarget });
 			}}
-			onnature={(natureId: string) => {
-				typing.natureId = natureId;
-			}}
+			onnature={chooseNextNature}
 			onnatures={openNatures}
 		/>
 		<CanvasGestures
@@ -579,6 +581,8 @@
 				}}
 				onNodeNature={changeNature}
 				onStart={startAction}
+				nextNature={typing.nature(model.natures)}
+				onNextNature={chooseNextNature}
 				oncanvas={(next: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = next;
 					canvasViewport = element;

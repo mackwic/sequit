@@ -69,11 +69,7 @@
 					iconSize={16}
 				/><span class="sr-only">{natureTip}</span>
 			{/snippet}
-			<NatureMenuItems {natures} checkedId={nature?.id} onselect={onnature} />
-			<div role="separator"></div>
-			<button role="menuitem" type="button" onclick={onnatures}
-				><Icon name="phosphor:tag" /><span>{m.editing_canvas_manage_natures()}</span></button
-			>
+			<NatureMenuItems {natures} checkedId={nature?.id} onselect={onnature} onmanage={onnatures} />
 		</DropdownMenu>
 		<span class="tip" aria-hidden="true">{natureTip}</span>
 	</span>

@@ -195,6 +195,10 @@
 		if (current.ok && interactive)
 			void execute(() => current.value.session.dispatch([nodeNatureUpdate(nodeId, natureId)]));
 	}
+	/** The nature new boxes take in this view, chosen from the side bar or the empty canvas. */
+	function chooseNextNature(natureId: string): void {
+		if (typing !== undefined) typing.natureId = natureId;
+	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const current = opened;
 		if (!current.ok) return;
@@ -535,6 +539,8 @@
 				}}
 				onNodeNature={changeNature}
 				onStart={startAction}
+				nextNature={typing?.nature(natures)}
+				onNextNature={chooseNextNature}
 				oncanvas={(canvas: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = canvas;
 					canvasViewport = element;
@@ -662,9 +668,7 @@
 			oncreate={() => {
 				openDraft({ near: session.relativeNodeCreationTarget });
 			}}
-			onnature={(natureId: string) => {
-				if (typing !== undefined) typing.natureId = natureId;
-			}}
+			onnature={chooseNextNature}
 			onnatures={openNatures}
 		/>
 		<CanvasInteractionStatus {session} />

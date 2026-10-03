@@ -67,6 +67,8 @@
 		onNodeType,
 		onNodeNature,
 		onStart,
+		nextNature,
+		onNextNature,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -99,8 +101,12 @@
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
 		/** Gives a box another nature; without it, the header of the selected box opens no menu. */
 		onNodeNature?: ((nodeId: string, natureId: string) => void) | undefined;
-		/** Starts typing the first box; without it, an empty canvas invites nothing. */
+		/** Starts typing the first box; with `onNextNature`, an empty canvas then invites it. */
 		onStart?: (() => void) | undefined;
+		/** The nature new boxes take, previewed by the invitation of an empty canvas. */
+		nextNature?: LogicNature | undefined;
+		/** Chooses the nature of new boxes from the invitation's header. */
+		onNextNature?: ((natureId: string) => void) | undefined;
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: (() => void) | undefined;
@@ -114,7 +120,7 @@
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
 		/** Starts typing a sibling of the selected node; its handle and `S` need it. */
 		onCreateSibling?: ((target: EntityRef) => void) | undefined;
-		/** Offered by the background menu, each only when given. */
+		/** Offered by the background menu and the nature menus, each only when given. */
 		onManageNatures?: (() => void) | undefined;
 		onExport?: (() => void) | undefined;
 		onExportImage?: (() => void) | undefined;
@@ -171,6 +177,39 @@
 			return display.diagnostic?.reason.code ?? 'layout-failed';
 		return undefined;
 	});
+	/** An empty canvas invites its first box where it will stand, and lets choose its nature. */
+	let inviting = $derived(
+		onStart !== undefined &&
+			onNextNature !== undefined &&
+			canvas?.nodes.length === 0 &&
+			canvas.groups.length === 0 &&
+			canvas.junctions.length === 0,
+	);
+	/** The header of the invitation whose nature menu is open. */
+	let startMenu = $state.raw<HTMLElement>();
+	/** The menu lasts while its invitation shows; a header removed meanwhile never anchors it again. */
+	let startMenuHeader = $derived.by(() => {
+		if (!inviting || startMenu?.isConnected !== true) return undefined;
+		return startMenu;
+	});
+	let invitation = $derived.by(() => {
+		if (!inviting || onStart === undefined) return undefined;
+		return {
+			nature: nextNature,
+			choosing: startMenuHeader !== undefined,
+			onstart: onStart,
+			onchoose: toggleStartMenu,
+		};
+	});
+	function toggleStartMenu(header: HTMLElement): void {
+		if (startMenuHeader === undefined) startMenu = header;
+		else startMenu = undefined;
+	}
+	function closeStartMenu(restoreFocus: boolean): void {
+		const header = startMenu;
+		startMenu = undefined;
+		if (restoreFocus) header?.focus();
+	}
 	let spacePressed = $state(false);
 	let panning = $state(false);
 	let panMoved = false;
@@ -591,7 +630,7 @@
 				{draft}
 				{onNodeType}
 				onNatureMenu={onNodeNature && toggleNatureMenu}
-				{onStart}
+				{invitation}
 				{onGroupEdit}
 				{onGroupToggle}
 				{onJunctionEdit}
@@ -793,6 +832,26 @@
 				onselect={(natureId: string) => {
 					if (natureId !== menu.natureId) change(menu.id, natureId);
 				}}
+				onmanage={onManageNatures}
+			/>
+		</MenuSurface>
+	{/if}
+	{#if startMenuHeader && onNextNature}
+		{@const header = startMenuHeader}
+		<MenuSurface
+			open
+			label={m.editing_canvas_next_nature()}
+			anchor={header}
+			owner={header}
+			placement="bottom-start"
+			restoreFocusOnSelect
+			onclose={closeStartMenu}
+		>
+			<NatureMenuItems
+				{natures}
+				checkedId={nextNature?.id}
+				onselect={onNextNature}
+				onmanage={onManageNatures}
 			/>
 		</MenuSurface>
 	{/if}
