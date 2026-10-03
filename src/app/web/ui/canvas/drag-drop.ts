@@ -4,6 +4,19 @@ export const CONNECTION_BAND = 16;
 export enum DropKind {
 	Connect = 'connect',
 	Move = 'move',
+	Refused = 'refused',
+}
+
+/** Why releasing here would do nothing; the label says so before the author lets go. */
+export enum DropRefusal {
+	/** The relation would close a cycle. */
+	Cycle = 'cycle',
+	/** The same relation already exists. */
+	Duplicate = 'duplicate',
+	/** A dragged group would enter one of its own subgroups. */
+	Descendant = 'descendant',
+	/** The document refuses the relation for another reason. */
+	Invalid = 'invalid',
 }
 
 interface ConnectDrop {
@@ -17,7 +30,14 @@ interface MoveDrop {
 	readonly groupId?: string;
 }
 
-export type DropPlan = ConnectDrop | MoveDrop;
+interface RefusedDrop {
+	readonly kind: DropKind.Refused;
+	readonly reason: DropRefusal;
+	/** The endpoint the refused relation or move aimed at. */
+	readonly to: string;
+}
+
+export type DropPlan = ConnectDrop | MoveDrop | RefusedDrop;
 
 interface ClientBounds {
 	readonly top: number;
@@ -40,6 +60,8 @@ export interface DropContext {
 	readonly selected: readonly string[];
 	/** The direct container of an endpoint, `undefined` at the root. */
 	readonly containerOf: (id: string) => string | undefined;
+	/** Why the document would refuse the relation `from → to`, `undefined` when it accepts it. */
+	readonly refuseConnection: (from: string, to: string) => DropRefusal | undefined;
 }
 
 function contains(bounds: ClientBounds, x: number, y: number): boolean {
@@ -87,17 +109,31 @@ function movable(context: DropContext, id: string, groupId: string | undefined):
 	return id !== groupId && !encloses(context, id, groupId);
 }
 
-function move(context: DropContext, groupId: string | undefined): MoveDrop | undefined {
-	const ids = draggedIds(context).filter((id) => movable(context, id, groupId));
-	if (ids.length === 0) return undefined;
-	if (groupId === undefined) return { kind: DropKind.Move, ids };
-	return { kind: DropKind.Move, ids, groupId };
+/**
+ * Nothing to move is no refusal, except a group aiming at one of its subgroups: hovering an
+ * element's own container, or a group's own interior, says nothing.
+ */
+function move(
+	context: DropContext,
+	groupId: string | undefined,
+): MoveDrop | RefusedDrop | undefined {
+	const dragged = draggedIds(context);
+	const ids = dragged.filter((id) => movable(context, id, groupId));
+	if (groupId === undefined) {
+		if (ids.length === 0) return undefined;
+		return { kind: DropKind.Move, ids };
+	}
+	if (ids.length > 0) return { kind: DropKind.Move, ids, groupId };
+	if (dragged.some((id) => id !== groupId && encloses(context, id, groupId)))
+		return { kind: DropKind.Refused, reason: DropRefusal.Descendant, to: groupId };
+	return undefined;
 }
 
 /**
  * A node, a junction, a group's header or its inner band connect from the dragged element,
- * unless the group already encloses it. A group's interior moves the dragged elements into it;
- * the canvas background (`candidate` undefined) returns them to the root.
+ * unless the group already encloses it or the document would refuse the relation. A group's
+ * interior moves the dragged elements into it; the canvas background (`candidate` undefined)
+ * returns them to the root.
  */
 export function planDrop(
 	context: DropContext,
@@ -107,5 +143,7 @@ export function planDrop(
 	if (candidate.group && !candidate.band) return move(context, candidate.id);
 	if (candidate.id === context.from || encloses(context, candidate.id, context.from))
 		return undefined;
+	const reason = context.refuseConnection(context.from, candidate.id);
+	if (reason !== undefined) return { kind: DropKind.Refused, reason, to: candidate.id };
 	return { kind: DropKind.Connect, to: candidate.id };
 }

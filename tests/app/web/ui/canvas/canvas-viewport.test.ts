@@ -2,13 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import {
 	anchorPreservingScroll,
+	canvasPanOffset,
+	canvasStageMargin,
 	centeredStageOrigin,
 	clampCanvasZoom,
+	pannedScroll,
 	panScrollPosition,
 	revealScrollDelta,
 	scaledStageExtent,
 	stepCanvasZoom,
 } from '../../../../../src/app/web/ui/canvas/canvas-viewport';
+
+const large = {
+	stage: { width: 1_000, height: 800 },
+	viewport: { width: 500, height: 400 },
+	zoom: 1,
+};
 
 describe('canvas viewport calculations', () => {
 	it('clamps zoom and advances in deterministic decimal steps', () => {
@@ -20,11 +29,19 @@ describe('canvas viewport calculations', () => {
 		expect(stepCanvasZoom(2.5, 1)).toBe(2.5);
 	});
 
-	it('includes unscaled stage padding in fractional zoom extents', () => {
+	it('includes unscaled stage margins in fractional zoom extents', () => {
 		expect(scaledStageExtent({ width: 400, height: 200 }, 0.75)).toEqual({
 			width: 428,
 			height: 278,
 		});
+		expect(scaledStageExtent({ width: 400, height: 200 }, 0.75, { x: 10, y: 20 })).toEqual({
+			width: 320,
+			height: 190,
+		});
+	});
+
+	it('leaves almost a viewport to pan on each side, never less than the stage padding', () => {
+		expect(canvasStageMargin({ width: 800, height: 100 })).toEqual({ x: 736, y: 64 });
 	});
 
 	it('centers small stages while retaining minimum padding', () => {
@@ -36,28 +53,43 @@ describe('canvas viewport calculations', () => {
 		).toEqual({ x: 64, y: 64 });
 	});
 
-	it('preserves a pointer-anchored document point while zooming', () => {
-		expect(
-			anchorPreservingScroll({
-				stage: { width: 1_000, height: 800 },
-				viewport: { width: 500, height: 400 },
-				anchor: { x: 125, y: 100 },
-				scroll: { left: 250, top: 200 },
-				fromZoom: 1,
-				toZoom: 1.5,
-			}),
-		).toEqual({ left: 405.5, top: 318 });
+	it('frames an unpanned stage as it would sit without margin', () => {
+		const small = { stage: { width: 400, height: 200 }, viewport: { width: 800, height: 600 } };
+		// Margins 736 × 536: the stage sits 200 px from the viewport edges, centred.
+		expect(pannedScroll({ ...small, zoom: 1 }, { x: 0, y: 0 })).toEqual({ left: 536, top: 336 });
+		// Margins 436 × 336: a larger stage starts at the stage padding.
+		expect(pannedScroll(large, { x: 0, y: 0 })).toEqual({ left: 372, top: 272 });
 	});
 
-	it('preserves the viewport center and clamps scroll at padded boundaries', () => {
+	it('pans until a sliver of the stage is left on either side, and round-trips offsets', () => {
+		expect(pannedScroll(large, { x: -10_000, y: -10_000 })).toEqual({ left: 0, top: 0 });
+		// The content spans 1000 + 2 × 436 by 800 + 2 × 336.
+		expect(pannedScroll(large, { x: 10_000, y: 10_000 })).toEqual({ left: 1_372, top: 1_072 });
+		expect(canvasPanOffset(large, pannedScroll(large, { x: -120, y: 45 }))).toEqual({
+			x: -120,
+			y: 45,
+		});
+	});
+
+	it('preserves a pointer-anchored document point while zooming', () => {
+		// (500 + 125 - 436, 400 + 100 - 336) is document point (189, 164) at both zooms.
 		expect(
 			anchorPreservingScroll({
-				stage: { width: 1_000, height: 800 },
-				viewport: { width: 500, height: 400 },
+				from: large,
+				to: { ...large, zoom: 1.5 },
+				anchor: { x: 125, y: 100 },
+				scroll: { left: 500, top: 400 },
+			}),
+		).toEqual({ left: 594.5, top: 482 });
+	});
+
+	it('clamps an anchored zoom at the margin boundaries', () => {
+		expect(
+			anchorPreservingScroll({
+				from: large,
+				to: { ...large, zoom: 2.5 },
 				anchor: { x: 250, y: 200 },
 				scroll: { left: 0, top: 0 },
-				fromZoom: 1,
-				toZoom: 0.5,
 			}),
 		).toEqual({ left: 0, top: 0 });
 	});

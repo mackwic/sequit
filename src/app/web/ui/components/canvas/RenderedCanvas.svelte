@@ -21,7 +21,7 @@
 	import type { CanvasModel, RenderedCanvasNode } from '../../canvas/canvas-model';
 	import { printStageFit } from '../../canvas/canvas-print';
 	import { shortcutTitle } from '../../canvas/canvas-shortcuts';
-	import { CANVAS_STAGE_PADDING, scaledStageExtent } from '../../canvas/canvas-viewport';
+	import { CANVAS_STAGE_PADDING } from '../../canvas/canvas-viewport';
 	import { foldToggleShortcut } from '../../canvas/group-edit';
 	import { hostsJunction } from '../../canvas/junction-insertion';
 	import { renderRelationPaths } from '../../canvas/render-relations';
@@ -42,10 +42,12 @@
 		session,
 		draft,
 		onNodeType,
+		onNatureMenu,
+		onStart,
 		onGroupEdit,
 		onGroupToggle,
 		onJunctionEdit,
-		onRelationSplit,
+		onJunctionInsert,
 	}: {
 		canvas: CanvasModel;
 		zoom: number;
@@ -54,27 +56,41 @@
 		draft?: NodeDraftControls | undefined;
 		/** Types a box in place on double-click or Enter; without it, they open its dialog. */
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
+		/** Opens the nature menu of the selected box under its header; absent when read-only. */
+		onNatureMenu?: ((nodeId: string, header: HTMLElement) => void) | undefined;
+		/** Starts typing the first box of an empty canvas; absent when nothing can be created. */
+		onStart?: (() => void) | undefined;
 		onGroupEdit?: ((groupId: string) => void) | undefined;
 		/** Folds or unfolds a group; absent when the document is read-only. */
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
-		/** Inserts a junction on a double-clicked relation; absent for aggregates and read-only views. */
-		onRelationSplit?: ((relationId: string) => void) | undefined;
+		/** Inserts a junction on relations, here one double-clicked; absent for read-only views. */
+		onJunctionInsert?: ((relationIds: readonly string[]) => void) | undefined;
 	} = $props();
 	/** The fold button names its effect, never the current state. */
 	function foldGroupLabel(closed: boolean, label: string): string {
 		if (closed) return m.canvas_expand_group({ label });
 		return m.canvas_collapse_group({ label });
 	}
+	/** Aggregates stand for several source relations and host no junction. */
 	function splitAction(relationId: string): ((relationId: string) => void) | undefined {
 		const relation = canvas.relations.find(({ id }) => id === relationId);
-		if (relation === undefined || !hostsJunction(relation)) return undefined;
-		return onRelationSplit;
+		const insert = onJunctionInsert;
+		if (relation === undefined || !hostsJunction(relation) || insert === undefined)
+			return undefined;
+		return (id) => {
+			insert([id]);
+		};
 	}
 
 	let relations = $derived(canvas.relations);
 	let renderedRelations = $derived(renderRelationPaths(relations));
-	let extent = $derived(scaledStageExtent(canvas, zoom));
+	/**
+	 * The pan margin, `canvasStageMargin` in `cqw`/`cqh` of the viewport container: the layout follows
+	 * a resize by itself, and the scroll position follows it in `LogicCanvas`.
+	 */
+	const marginX = `max(${CANVAS_STAGE_PADDING}px, 100cqw - ${CANVAS_STAGE_PADDING}px)`;
+	const marginY = `max(${CANVAS_STAGE_PADDING}px, 100cqh - ${CANVAS_STAGE_PADDING}px)`;
 	let printFit = $derived(printStageFit(canvas));
 	let stage = $state<HTMLDivElement>();
 	let entityIndex = $derived(createCanvasEntityIndex(canvas));
@@ -156,8 +172,8 @@
 <div
 	class="relative min-h-full min-w-full"
 	data-canvas-sizing-wrapper
-	style:width={`${extent.width}px`}
-	style:height={`${extent.height}px`}
+	style:width={`calc(${canvas.width * zoom}px + 2 * ${marginX})`}
+	style:height={`calc(${canvas.height * zoom}px + 2 * ${marginY})`}
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -168,8 +184,8 @@
 		data-print-orientation={printFit.orientation}
 		style:width={`${canvas.width}px`}
 		style:height={`${canvas.height}px`}
-		style:left={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.width * zoom}px) / 2))`}
-		style:top={`max(${CANVAS_STAGE_PADDING}px, calc((100% - ${canvas.height * zoom}px) / 2))`}
+		style:left={`max(${marginX}, calc((100% - ${canvas.width * zoom}px) / 2))`}
+		style:top={`max(${marginY}, calc((100% - ${canvas.height * zoom}px) / 2))`}
 		style:transform={`scale(${zoom})`}
 		style:transform-origin="top left"
 		style:--print-scale={printFit.scale}
@@ -290,6 +306,7 @@
 					{session}
 					tabbable={entityKey(EntityKind.Node, node.id) === tabEntryKey}
 					ontype={onNodeType}
+					onnature={onNatureMenu}
 				/>
 			{/if}
 		{/each}
@@ -336,9 +353,72 @@
 			</button>
 		{/each}
 	</div>
+	{#if onStart && canvas.nodes.length === 0 && canvas.groups.length === 0 && canvas.junctions.length === 0}
+		<!-- Where the first box will stand: the layout centres a lone box in the viewport. -->
+		<button class="empty-prompt" type="button" data-empty-prompt onclick={onStart}>
+			<span class="empty-prompt-header"><Icon name="phosphor:plus" size={15} /></span>
+			<span class="empty-prompt-body">{m.canvas_empty_prompt()}</span>
+		</button>
+	{/if}
 </div>
 
 <style>
+	.empty-prompt {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		z-index: 20;
+		display: flex;
+		width: 220px;
+		flex-direction: column;
+		box-sizing: border-box;
+		border: 1.5px dashed color-mix(in srgb, var(--ui-accent) 45%, #d6d3d1);
+		border-radius: 0.75rem;
+		padding: 0;
+		overflow: hidden;
+		background: color-mix(in srgb, var(--ui-surface) 55%, transparent);
+		color: var(--ui-muted);
+		text-align: left;
+		cursor: text;
+		transform: translate(-50%, -50%);
+		transition:
+			border-color 120ms ease-out,
+			background-color 120ms ease-out,
+			color 120ms ease-out;
+	}
+	.empty-prompt:hover,
+	.empty-prompt:focus-visible {
+		border-color: var(--ui-accent);
+		background: var(--ui-surface);
+		color: var(--ui-text);
+	}
+	.empty-prompt:focus-visible {
+		outline: 2px solid var(--ui-accent);
+		outline-offset: 3px;
+	}
+	.empty-prompt-header {
+		display: flex;
+		align-items: center;
+		border-bottom: 1px dashed color-mix(in srgb, var(--ui-accent) 30%, #d6d3d1);
+		padding: 0.55rem 0.75rem;
+		color: var(--ui-accent);
+	}
+	.empty-prompt-body {
+		padding: 0.9rem 0.75rem 1rem;
+		font-size: 0.875rem;
+		line-height: 1.45;
+	}
+	@media print {
+		.empty-prompt {
+			display: none;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.empty-prompt {
+			transition: none;
+		}
+	}
+
 	.canvas-region {
 		position: absolute;
 		box-sizing: border-box;

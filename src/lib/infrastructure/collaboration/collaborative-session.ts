@@ -215,7 +215,7 @@ export class CollaborativeSession
 	}
 
 	readonly #updated = (update: Uint8Array, origin: unknown): void => {
-		if (origin === this.#textOrigin) this.#textFlow.buffer.push(update);
+		if (origin === this.#textOrigin) this.#textFlow.push(update, this.history);
 		this.#sourceState = readSessionSourceState(this.document, this.#sourceState, this.#initialized);
 		if (this.#sourceState.kind === SourceDocumentStateKind.Valid) this.#initialized = true;
 		notifySubscribers(this.sourceStateListeners, this.#sourceState);
@@ -242,6 +242,7 @@ export class CollaborativeSession
 	};
 
 	readonly #handle = (message: SessionMessage): void => {
+		const before = this.#sourceState;
 		handleIncomingMessage(message, {
 			document: this.document,
 			onSync: (payload) => {
@@ -261,6 +262,7 @@ export class CollaborativeSession
 				const synchronized = this.#initialized && !this.#resumingText;
 				if (synchronized && this.#synchronizer.attempts === 0) this.#ready = true;
 				if (receipt.initialization) this.#initialization = undefined;
+				if (receipt.commands) this.history.committed(receipt.commands, before, this.#sourceState);
 				if (receipt.decision && id !== undefined) this.announceAccepted(id, commit);
 			},
 			onReject: (reason) => {

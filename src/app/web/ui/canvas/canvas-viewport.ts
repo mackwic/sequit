@@ -26,6 +26,25 @@ export const MIN_CANVAS_ZOOM = 0.1;
 export const MAX_CANVAS_ZOOM = 2.5;
 const CANVAS_ZOOM_STEP = 0.1;
 export const CANVAS_STAGE_PADDING = 64;
+const DEFAULT_STAGE_MARGIN: CanvasPoint = { x: CANVAS_STAGE_PADDING, y: CANVAS_STAGE_PADDING };
+
+/** What the scroll position depends on: the laid-out stage, its zoom and the viewport around it. */
+export interface CanvasViewportGeometry {
+	readonly stage: CanvasSize;
+	readonly viewport: CanvasSize;
+	readonly zoom: number;
+}
+
+/**
+ * The room to pan around the stage: almost a viewport on each side, so that any part of the graph
+ * can be brought anywhere on screen while a sliver of the stage always stays in view.
+ */
+export function canvasStageMargin(viewport: CanvasSize): CanvasPoint {
+	return {
+		x: Math.max(CANVAS_STAGE_PADDING, viewport.width - CANVAS_STAGE_PADDING),
+		y: Math.max(CANVAS_STAGE_PADDING, viewport.height - CANVAS_STAGE_PADDING),
+	};
+}
 
 export function clampCanvasZoom(zoom: number): number {
 	return Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, zoom));
@@ -41,67 +60,93 @@ export function stepCanvasZoom(zoom: number, direction: -1 | 1): number {
 export function scaledStageExtent(
 	stage: CanvasSize,
 	zoom: number,
-	padding = CANVAS_STAGE_PADDING,
+	margin = DEFAULT_STAGE_MARGIN,
 ): CanvasSize {
-	const totalPadding = padding * 2;
 	return {
-		width: stage.width * zoom + totalPadding,
-		height: stage.height * zoom + totalPadding,
+		width: stage.width * zoom + margin.x * 2,
+		height: stage.height * zoom + margin.y * 2,
 	};
 }
 
+/** Where the stage starts, centred while it fits and `margin` away from the edges otherwise. */
 export function centeredStageOrigin(
 	viewport: CanvasSize,
 	stage: CanvasSize,
 	zoom: number,
-	padding = CANVAS_STAGE_PADDING,
+	margin = DEFAULT_STAGE_MARGIN,
 ): CanvasPoint {
 	return {
-		x: Math.max(padding, (viewport.width - stage.width * zoom) / 2),
-		y: Math.max(padding, (viewport.height - stage.height * zoom) / 2),
+		x: Math.max(margin.x, (viewport.width - stage.width * zoom) / 2),
+		y: Math.max(margin.y, (viewport.height - stage.height * zoom) / 2),
 	};
 }
 
-function clampScroll(value: number, extent: number, viewport: number): number {
-	return Math.min(Math.max(0, extent - viewport), Math.max(0, value));
+/** The stage's origin inside the scrolled content, around which the pan margin lies. */
+function scrolledStageOrigin({ stage, viewport, zoom }: CanvasViewportGeometry): CanvasPoint {
+	return centeredStageOrigin(viewport, stage, zoom, canvasStageMargin(viewport));
 }
 
+/** The scroll position that shows the stage as it would sit without pan margin. */
+function homeScroll(geometry: CanvasViewportGeometry): CanvasScrollPosition {
+	const origin = scrolledStageOrigin(geometry);
+	const home = centeredStageOrigin(geometry.viewport, geometry.stage, geometry.zoom);
+	return { left: origin.x - home.x, top: origin.y - home.y };
+}
+
+function clampedScroll(
+	geometry: CanvasViewportGeometry,
+	scroll: CanvasScrollPosition,
+): CanvasScrollPosition {
+	const { stage, viewport, zoom } = geometry;
+	const extent = scaledStageExtent(stage, zoom, canvasStageMargin(viewport));
+	return {
+		left: Math.min(Math.max(0, extent.width - viewport.width), Math.max(0, scroll.left)),
+		top: Math.min(Math.max(0, extent.height - viewport.height), Math.max(0, scroll.top)),
+	};
+}
+
+/**
+ * How far the person has panned away from where the stage sits by default. Kept across layouts
+ * and resizes, it lets a stage that fits stay centred, and a larger one stay put, until panned.
+ */
+export function canvasPanOffset(
+	geometry: CanvasViewportGeometry,
+	scroll: CanvasScrollPosition,
+): CanvasPoint {
+	const home = homeScroll(geometry);
+	return { x: scroll.left - home.left, y: scroll.top - home.top };
+}
+
+export function pannedScroll(
+	geometry: CanvasViewportGeometry,
+	offset: CanvasPoint,
+): CanvasScrollPosition {
+	const home = homeScroll(geometry);
+	return clampedScroll(geometry, { left: home.left + offset.x, top: home.top + offset.y });
+}
+
+/** Keeps the document point under `anchor` in place from one geometry to the next zoom. */
 export function anchorPreservingScroll({
-	stage,
-	viewport,
+	from,
+	to,
 	anchor,
 	scroll,
-	fromZoom,
-	toZoom,
-	padding = CANVAS_STAGE_PADDING,
 }: {
-	readonly stage: CanvasSize;
-	readonly viewport: CanvasSize;
+	readonly from: CanvasViewportGeometry;
+	readonly to: CanvasViewportGeometry;
 	readonly anchor: CanvasPoint;
 	readonly scroll: CanvasScrollPosition;
-	readonly fromZoom: number;
-	readonly toZoom: number;
-	readonly padding?: number;
 }): CanvasScrollPosition {
-	const fromOrigin = centeredStageOrigin(viewport, stage, fromZoom, padding);
-	const toOrigin = centeredStageOrigin(viewport, stage, toZoom, padding);
+	const fromOrigin = scrolledStageOrigin(from);
+	const toOrigin = scrolledStageOrigin(to);
 	const documentPoint = {
-		x: (scroll.left + anchor.x - fromOrigin.x) / fromZoom,
-		y: (scroll.top + anchor.y - fromOrigin.y) / fromZoom,
+		x: (scroll.left + anchor.x - fromOrigin.x) / from.zoom,
+		y: (scroll.top + anchor.y - fromOrigin.y) / from.zoom,
 	};
-	const extent = scaledStageExtent(stage, toZoom, padding);
-	return {
-		left: clampScroll(
-			toOrigin.x + documentPoint.x * toZoom - anchor.x,
-			extent.width,
-			viewport.width,
-		),
-		top: clampScroll(
-			toOrigin.y + documentPoint.y * toZoom - anchor.y,
-			extent.height,
-			viewport.height,
-		),
-	};
+	return clampedScroll(to, {
+		left: toOrigin.x + documentPoint.x * to.zoom - anchor.x,
+		top: toOrigin.y + documentPoint.y * to.zoom - anchor.y,
+	});
 }
 
 export function panScrollPosition({

@@ -110,6 +110,63 @@ describe('node creation planning', () => {
 		});
 	});
 
+	it('creates a sibling sharing every parent and the group of the box, a root without them', () => {
+		const node = (id: string, layoutOrder: string) => ({
+			kind: EndpointKind.Node as const,
+			id,
+			natureId: 'first',
+			markdown: id,
+			layoutOrder: orderKey(layoutOrder),
+		});
+		const document: LogicDocument = {
+			...validLogicDocument(),
+			groups: [
+				{
+					kind: EndpointKind.Group,
+					id: 'container',
+					label: 'Container',
+					layoutOrder: orderKey('a0'),
+				},
+			],
+			natures: [{ id: 'first', label: 'First', color: '#111111' }],
+			nodes: [
+				node('goal', 'a1'),
+				node('other-goal', 'a2'),
+				{ ...node('selected', 'a3'), groupId: 'container' },
+				{ ...node('child', 'a4'), groupId: 'container' },
+			],
+			junctions: [],
+			relations: [
+				{ id: 'to-goal', from: 'selected', to: 'goal' },
+				{ id: 'to-other-goal', from: 'selected', to: 'other-goal' },
+				{ id: 'from-child', from: 'child', to: 'selected' },
+			],
+		};
+		const sibling = { kind: EntityKind.Node, id: 'selected' } as const;
+
+		expect(planNodeCreation(document, { sibling }, ids())).toEqual({
+			node: { id: 'new', natureId: 'first', markdown: '', groupId: 'container' },
+			relations: [
+				{ id: 'new-relation-0', from: 'new', to: 'goal' },
+				{ id: 'new-relation-1', from: 'new', to: 'other-goal' },
+			],
+		});
+		expect(
+			planNodeCreation(document, { sibling: { kind: EntityKind.Node, id: 'goal' } }, ids()),
+		).toEqual({ node: { id: 'new', natureId: 'first', markdown: '' }, relations: [] });
+		expect(
+			planNodeCreation(document, { sibling: { kind: EntityKind.Node, id: 'gone' } }, ids()),
+		).toBeUndefined();
+	});
+
+	it('gives a top-level sibling the lane of its box', () => {
+		const document = explicitLaneLogicDocument();
+		expect(
+			planNodeCreation(document, { sibling: { kind: EntityKind.Node, id: 'isolated' } }, ids())
+				?.node.laneId,
+		).toBe('right');
+	});
+
 	it('refuses a box in a folded group, or in a group a folded one contains', () => {
 		const base = validLogicDocument();
 		const document = (state: GroupState): LogicDocument => ({

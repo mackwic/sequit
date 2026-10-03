@@ -21,6 +21,7 @@ interface SelectionEnvelope {
 	readonly additive: boolean;
 }
 
+/** Only boxes enter an envelope: junctions and groups are left to a click or Shift+click. */
 export function selectionInsideEnvelope(
 	initial: readonly EntityRef[],
 	candidates: readonly EntityCandidate[],
@@ -34,8 +35,7 @@ export function selectionInsideEnvelope(
 	const selected: EntityRef[] = [];
 	if (envelope.additive) selected.push(...initial);
 	for (const { ref, bounds } of candidates) {
-		const selectable = ref.kind === EntityKind.Node || ref.kind === EntityKind.Junction;
-		if (!selectable) continue;
+		if (ref.kind !== EntityKind.Node) continue;
 		const intersectsHorizontally = bounds.right >= left && bounds.left <= right;
 		const intersectsVertically = bounds.bottom >= top && bounds.top <= bottom;
 		const intersects = intersectsHorizontally && intersectsVertically;

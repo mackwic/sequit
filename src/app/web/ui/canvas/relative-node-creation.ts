@@ -9,8 +9,8 @@ import { EntityKind, type EntityRef } from './canvas-entity';
 import { rootLanes } from './root-lanes';
 
 /**
- * Where a new box goes: a root, optionally inside a group or beside the selection, or attached
- * to a selected endpoint.
+ * Where a new box goes: a root, optionally inside a group or beside the selection, attached
+ * to a selected endpoint, or beside a box as its sibling.
  */
 export interface NodeCreationRequest {
 	/** The group whose background was double-clicked. */
@@ -21,6 +21,8 @@ export interface NodeCreationRequest {
 	readonly target?: EntityRef | undefined;
 	/** The selection a root box stands beside: it only lends its lane; no relation, no group. */
 	readonly near?: EntityRef | undefined;
+	/** The box whose parents, group and lane the new box shares. */
+	readonly sibling?: EntityRef | undefined;
 }
 
 /** The box as it starts out, and the relations created with it. */
@@ -99,9 +101,21 @@ function nearEndpoint(
 	return selectedEndpoint(document, request.near);
 }
 
+/** The relations that make `id` a sibling of `sibling`: one towards each of its parents. */
+function siblingRelations(
+	document: LogicDocument,
+	sibling: LogicEndpoint,
+	id: string,
+	relationId: () => string,
+): readonly LogicRelation[] {
+	return document.relations
+		.filter(({ from }) => from === sibling.id)
+		.map(({ to }) => ({ id: relationId(), from: id, to }));
+}
+
 /**
  * Resolves graph parentage independently from group containment. Returns `undefined` when the
- * document has no nature, the target is gone, or the box would land in a folded group.
+ * document has no nature, the target or sibling is gone, or the box would land in a folded group.
  */
 export function planNodeCreation(
 	document: LogicDocument,
@@ -113,20 +127,32 @@ export function planNodeCreation(
 		target = selectedEndpoint(document, request.target);
 		if (target === undefined) return undefined;
 	}
+	let sibling: LogicEndpoint | undefined;
+	if (request.sibling !== undefined) {
+		sibling = selectedEndpoint(document, request.sibling);
+		if (sibling === undefined) return undefined;
+	}
 	const natureId = natureFor(document, options.natureId);
 	if (natureId === undefined) return undefined;
 	const node: NewLogicNode = { id: options.nodeId, natureId, markdown: '' };
-	const groupId = target?.groupId ?? request.groupId;
+	const anchor = target ?? sibling;
+	const groupId = anchor?.groupId ?? request.groupId;
 	if (groupId !== undefined && folded(document, groupId)) return undefined;
 	let containedNode = node;
 	if (groupId !== undefined) containedNode = { ...node, groupId };
 	else {
-		const laneId = laneFor(document, request, target ?? nearEndpoint(document, request));
+		const laneId = laneFor(document, request, anchor ?? nearEndpoint(document, request));
 		if (laneId !== undefined) containedNode = { ...node, laneId };
 	}
-	if (target === undefined) return { node: containedNode, relations: [] };
-	return {
-		node: containedNode,
-		relations: [{ id: options.relationId(), from: options.nodeId, to: target.id }],
-	};
+	if (target !== undefined)
+		return {
+			node: containedNode,
+			relations: [{ id: options.relationId(), from: options.nodeId, to: target.id }],
+		};
+	if (sibling !== undefined)
+		return {
+			node: containedNode,
+			relations: siblingRelations(document, sibling, options.nodeId, options.relationId),
+		};
+	return { node: containedNode, relations: [] };
 }

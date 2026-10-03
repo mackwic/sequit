@@ -83,6 +83,10 @@ class LayoutRoutes {
 		this.geometry.haveNoCrossingWith(resolveRoutes(this.layout, other));
 		return this;
 	}
+	haveNoPhantomRelation(): this {
+		this.geometry.haveNoPhantomRelation();
+		return this;
+	}
 }
 
 /** Routing observations share the layout context; rendered paths remain an explicit selection. */

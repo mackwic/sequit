@@ -1,6 +1,7 @@
 <script lang="ts">
 	import 'quill/dist/quill.snow.css';
 
+	import type Quill from 'quill';
 	import { onMount, untrack } from 'svelte';
 
 	import { m } from '../../../i18n/paraglide/messages';
@@ -29,6 +30,7 @@
 	let card = $state<HTMLElement>();
 	let host = $state<HTMLElement>();
 	let failure = $state('');
+	let editor: Quill | undefined;
 
 	/** The canvas neither selects, drags nor creates from inside the box being typed. */
 	function contain(event: Event): void {
@@ -40,6 +42,14 @@
 		if (event.target instanceof Element && event.target.closest('[data-node-header]') !== null)
 			own.edit();
 	}
+	/** A parked box is typed again from within, by a click or the keyboard. */
+	function resume(): void {
+		if (own.parked) own.resume();
+	}
+	// Parked, the box keeps no focus: keys no longer reach a box that no bar shows as typed.
+	$effect(() => {
+		if (own.parked && editor?.hasFocus() === true) editor.blur();
+	});
 	function reveal(): void {
 		const viewport = scope?.closest('[data-canvas-viewport]');
 		if (!viewport || !card) return;
@@ -67,6 +77,7 @@
 				}
 				destroy = text.destroy;
 				const { quill } = text;
+				editor = quill;
 				// A silent selection focuses the text without the instant scroll of a plain focus.
 				quill.setSelection(quill.getLength() - 1, 0, 'silent');
 				reveal();
@@ -76,6 +87,7 @@
 			});
 		return () => {
 			disposed = true;
+			editor = undefined;
 			destroy?.();
 		};
 	});
@@ -90,8 +102,9 @@
 	onpointerdown={contain}
 	onclick={contain}
 	ondblclick={doubleClick}
+	onfocusin={resume}
 >
-	<LogicNode {node} label={own.label} bind:element={card}>
+	<LogicNode {node} label={own.label} parked={own.parked} bind:element={card}>
 		{#snippet body()}<span class="draft-editor" bind:this={host}></span>{/snippet}
 	</LogicNode>
 	{#if own.diagnostic !== undefined || failure !== ''}

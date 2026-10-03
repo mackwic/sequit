@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, type Snippet } from 'svelte';
 
+	import type { LogicDocument } from '../../../../../lib/core/document/logic-document';
 	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
 	import { isEditableTarget } from '../../canvas/canvas-event-guard';
 	import {
@@ -19,10 +20,12 @@
 	import type { NodeCreationRequest } from '../../canvas/relative-node-creation';
 	import { selectionInsideEnvelope } from '../../canvas/selection-envelope';
 	import type { CanvasSession } from '../../session/canvas-session.svelte';
+	import { connectionChecker, dropLabel } from './drop-feedback';
 
 	let {
 		session,
 		enabled,
+		read,
 		oncreate,
 		onconnect,
 		onmove,
@@ -31,6 +34,8 @@
 	}: {
 		session: CanvasSession;
 		enabled: boolean;
+		/** The document the dragged element would change: it names targets and refuses relations. */
+		read: () => LogicDocument;
 		/** Starts typing a box: a root on the double-clicked background, or with N beside the selection. */
 		oncreate: (request: NodeCreationRequest) => void;
 		onconnect: (from: string, to: string) => void;
@@ -48,7 +53,11 @@
 		toX: number;
 		toY: number;
 		active: boolean;
+		/** What releasing at the pointer does, or why it does nothing. */
+		feedback?: { readonly label: string; readonly refused: boolean } | undefined;
 	}>();
+	/** Relation checks of the current drag; a new drag reads the document afresh. */
+	let refuseConnection = connectionChecker(() => read());
 	let marquee = $state<{
 		id: number;
 		x: number;
@@ -63,6 +72,11 @@
 	/** Present while a connection or move drag is under way; groups then reveal their band. */
 	let dragActive = $derived.by((): '' | undefined => {
 		if (drag?.active === true) return '';
+		return undefined;
+	});
+	/** Present while releasing at the pointer would do nothing: the label then says why. */
+	let dropRefused = $derived.by((): '' | undefined => {
+		if (drag?.feedback?.refused === true) return '';
 		return undefined;
 	});
 	let suppressClick = false;
@@ -119,7 +133,7 @@
 		const selected = [...session.selection.values()]
 			.filter(({ kind }) => kind !== EntityKind.Relation)
 			.map((ref) => ref.id);
-		const plan = planDrop({ from, selected, containerOf }, candidate);
+		const plan = planDrop({ from, selected, containerOf, refuseConnection }, candidate);
 		if (plan === undefined) return undefined;
 		return { plan, element };
 	}
@@ -127,8 +141,10 @@
 		if (marquee?.active === true) applySelection(marquee.initial);
 		target?.removeAttribute('data-connection-target');
 		target?.removeAttribute('data-move-target');
+		target?.removeAttribute('data-refused-target');
 		target = undefined;
 		drag = undefined;
+		refuseConnection = connectionChecker(() => read());
 		marquee = undefined;
 	}
 	function applySelection(refs: readonly EntityRef[]) {
@@ -138,15 +154,12 @@
 	function updateMarqueeSelection(toX: number, toY: number) {
 		const current = marquee;
 		if (current === undefined) return;
-		const candidates = [
-			...surface.querySelectorAll<HTMLElement>('[data-node-id], [data-junction-id]'),
-		].map((element) => {
-			const nodeId = element.dataset['nodeId'];
-			let ref: EntityRef;
-			if (nodeId !== undefined) ref = { kind: EntityKind.Node, id: nodeId };
-			else ref = { kind: EntityKind.Junction, id: element.dataset['junctionId'] ?? '' };
-			return { ref, bounds: element.getBoundingClientRect() };
-		});
+		const candidates = [...surface.querySelectorAll<HTMLElement>('[data-node-id]')].map(
+			(element) => ({
+				ref: { kind: EntityKind.Node, id: element.dataset['nodeId'] ?? '' },
+				bounds: element.getBoundingClientRect(),
+			}),
+		);
 		applySelection(
 			selectionInsideEnvelope(current.initial, candidates, {
 				from: { x: current.x, y: current.y },
@@ -224,14 +237,22 @@
 		if (drag?.id !== event.pointerId) return;
 		if (!drag.active && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
 		event.preventDefault();
-		drag = { ...drag, active: true, toX: event.clientX, toY: event.clientY };
 		target?.removeAttribute('data-connection-target');
 		target?.removeAttribute('data-move-target');
+		target?.removeAttribute('data-refused-target');
 		const drop = dropAt(event.clientX, event.clientY, drag.from);
+		let feedback: { label: string; refused: boolean } | undefined;
+		if (drop !== undefined)
+			feedback = {
+				label: dropLabel(read(), drop.plan),
+				refused: drop.plan.kind === DropKind.Refused,
+			};
+		drag = { ...drag, active: true, toX: event.clientX, toY: event.clientY, feedback };
 		target = drop?.element;
 		if (drop?.plan.kind === DropKind.Connect)
 			target?.setAttribute('data-connection-target', 'true');
 		if (drop?.plan.kind === DropKind.Move) target?.setAttribute('data-move-target', 'true');
+		if (drop?.plan.kind === DropKind.Refused) target?.setAttribute('data-refused-target', 'true');
 	}
 	function up(event: PointerEvent) {
 		if (marquee?.id === event.pointerId) {
@@ -249,7 +270,7 @@
 		const plan = dropAt(event.clientX, event.clientY, current.from)?.plan;
 		if (plan === undefined) return;
 		if (plan.kind === DropKind.Connect) onconnect(current.from, plan.to);
-		else onmove(plan.ids, plan.groupId);
+		else if (plan.kind === DropKind.Move) onmove(plan.ids, plan.groupId);
 	}
 	function click(event: MouseEvent) {
 		if (!suppressClick) return;
@@ -315,6 +336,18 @@
 		<svg class="ghost" aria-hidden="true"
 			><line x1={drag.x} y1={drag.y} x2={drag.toX} y2={drag.toY} /></svg
 		>
+		{#if drag.feedback}
+			<p
+				class="drop-label"
+				role="status"
+				data-drop-label
+				data-refused={dropRefused}
+				style:left={`${drag.toX + 14}px`}
+				style:top={`${drag.toY + 18}px`}
+			>
+				{drag.feedback.label}
+			</p>
+		{/if}
 	{/if}
 	{#if marquee?.active}
 		<div
@@ -354,6 +387,11 @@
 		outline: 3px dashed var(--ui-accent);
 		outline-offset: 3px;
 	}
+	.gestures :global([data-endpoint-id][data-refused-target]) {
+		outline: 3px solid var(--ui-danger);
+		outline-offset: 3px;
+		cursor: not-allowed;
+	}
 	/* While dragging, every group shows the band that connects, in its own colour. */
 	.gestures[data-drag-active] :global([data-group-id]) {
 		box-shadow:
@@ -369,6 +407,9 @@
 	.gestures[data-drag-active] :global([data-group-id][data-move-target]) {
 		outline-color: var(--group-color);
 	}
+	.gestures[data-drag-active] :global([data-group-id][data-refused-target]) {
+		outline-color: var(--ui-danger);
+	}
 	.ghost {
 		position: fixed;
 		inset: 0;
@@ -382,6 +423,28 @@
 		stroke-width: 2;
 		stroke-dasharray: 6 4;
 		opacity: 0.7;
+	}
+	/* Beside the pointer, below the ghost line's end so it never hides the target it names. */
+	.drop-label {
+		position: fixed;
+		z-index: 51;
+		max-width: 320px;
+		margin: 0;
+		padding: 4px 8px;
+		border-radius: 6px;
+		background: var(--ui-text);
+		color: var(--ui-surface);
+		font-size: 12px;
+		font-weight: 500;
+		line-height: 1.4;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		pointer-events: none;
+		box-shadow: var(--ui-shadow);
+	}
+	.drop-label[data-refused] {
+		background: var(--ui-danger);
 	}
 	.selection-envelope {
 		position: fixed;

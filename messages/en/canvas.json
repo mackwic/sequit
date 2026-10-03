@@ -8,6 +8,7 @@
 	"canvas_shortcut_unfold": "Expand",
 	"canvas_shortcut_group": "Group",
 	"canvas_shortcut_create_child": "Create a child",
+	"canvas_shortcut_create_sibling": "Create a sibling",
 	"canvas_shortcut_draft_child": "Confirm and create a child",
 	"canvas_shortcut_draft_edit": "Confirm and open properties",
 	"canvas_shortcut_undo": "Undo",
@@ -83,5 +84,18 @@
 	"canvas_lanes_title": "Lanes…",
 	"canvas_region_preview": "Local region preview",
 	"canvas_relation_label": "Relation {id} from {from} to {to}",
-	"canvas_missing_nature": "Missing nature: {id}"
+	"canvas_missing_nature": "Missing nature: {id}",
+	"canvas_drop_connect": "Link to “{name}”",
+	"canvas_drop_connect_group": "Link to group “{name}”",
+	"canvas_drop_connect_junction": "Link to the junction",
+	"canvas_drop_move": "Move into “{name}”",
+	"canvas_drop_move_selection": "Move the selection into “{name}”",
+	"canvas_drop_root": "Move out of the group",
+	"canvas_drop_root_selection": "Move the selection out of groups",
+	"canvas_drop_refused": "Can’t link",
+	"canvas_drop_refused_cycle": "Can’t link: it would create a cycle",
+	"canvas_drop_refused_duplicate": "Already linked",
+	"canvas_drop_refused_descendant": "A group can’t enter one of its subgroups",
+	"canvas_empty_prompt": "What’s on your mind?",
+	"canvas_nature_menu": "Box nature"
 }

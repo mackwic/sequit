@@ -7,9 +7,11 @@
 		type LogicNature,
 	} from '../../../../../lib/core/document/logic-document';
 	import { m } from '../../../i18n/paraglide/messages';
-	import { EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import { entityKey, EntityKind, type EntityRef } from '../../canvas/canvas-entity';
+	import { canvasEntityElement } from '../../canvas/canvas-entity-dom';
 	import type { CanvasModel } from '../../canvas/canvas-model';
 	import { hostsJunction } from '../../canvas/junction-insertion';
+	import { handleSides } from '../../canvas/node-handles';
 	import {
 		CanvasEditPresentation,
 		type CanvasSession,
@@ -18,6 +20,7 @@
 	import ContextualBar from './ContextualBar.svelte';
 	import type { NodeDraftControls } from './node-typing.svelte';
 	import NodeEditor from './NodeEditor.svelte';
+	import NodeHandles from './NodeHandles.svelte';
 	import SelectionBar from './SelectionBar.svelte';
 	import TypingBar from './TypingBar.svelte';
 
@@ -36,8 +39,9 @@
 		onGroupToggle,
 		onGroupDissolve,
 		onJunctionEdit,
-		onRelationSplit,
+		onJunctionInsert,
 		onCreateChild,
+		onCreateSibling,
 		onDelete,
 	}: {
 		canvas: CanvasModel | undefined;
@@ -54,9 +58,12 @@
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
-		onRelationSplit?: ((relationId: string) => void) | undefined;
+		/** Converges relations on a new junction: one from its bar, several from the selection bar. */
+		onJunctionInsert?: ((relationIds: readonly string[]) => void) | undefined;
 		/** Starts typing a child of the selected node or junction. */
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
+		/** Starts typing a sibling of the selected node: same parents, group and lane. */
+		onCreateSibling?: ((target: EntityRef) => void) | undefined;
 		onDelete?: (() => void) | undefined;
 		editor?: Snippet<[EditingCanvasActivity, HTMLDivElement | undefined]> | undefined;
 		awareness?: Snippet<[CanvasModel, HTMLDivElement]> | undefined;
@@ -76,6 +83,8 @@
 		readonly split?: () => void;
 		/** Creates a child of the selected node or junction. */
 		readonly child?: () => void;
+		/** Creates a sibling of the selected node. */
+		readonly sibling?: () => void;
 	}
 	function foldAction(groupId: string | undefined): { fold: FoldAction } | Record<string, never> {
 		const toggle = onGroupToggle;
@@ -97,6 +106,15 @@
 		if (create === undefined) return {};
 		return {
 			child: () => {
+				create(entity);
+			},
+		};
+	}
+	function siblingAction(entity: EntityRef): { sibling: () => void } | Record<string, never> {
+		const create = onCreateSibling;
+		if (create === undefined) return {};
+		return {
+			sibling: () => {
 				create(entity);
 			},
 		};
@@ -143,6 +161,7 @@
 					run: () => session.beginNodeEdit(node),
 				},
 				...childAction(entity),
+				...siblingAction(entity),
 				...foldAction(node.navigation?.groupId),
 			};
 		}
@@ -173,21 +192,54 @@
 		}
 		const relation = canvas.relations.find(({ id }) => id === entity.id);
 		if (relation === undefined) return undefined;
-		const split = onRelationSplit;
-		if (split === undefined || !hostsJunction(relation)) return { entity };
+		const insert = onJunctionInsert;
+		if (insert === undefined || !hostsJunction(relation)) return { entity };
 		return {
 			entity,
 			split: () => {
-				split(entity.id);
+				insert([entity.id]);
 			},
 		};
 	});
-	/** The bar waits for the box: a new one is only drawn once laid out. */
+	/** Several relations, all plain, converge on one junction from the selection bar. */
+	let selectionJunction = $derived.by((): (() => void) | undefined => {
+		const insert = onJunctionInsert;
+		const current = canvas;
+		const selected = [...session.selection.values()];
+		if (insert === undefined || current === undefined || selected.length < 2) return undefined;
+		const plain = selected.every((entity) => {
+			const relation = current.relations.find(({ id }) => id === entity.id);
+			return (
+				entity.kind === EntityKind.Relation && relation !== undefined && hostsJunction(relation)
+			);
+		});
+		if (!plain) return undefined;
+		const relationIds = selected.map(({ id }) => id);
+		return () => {
+			insert(relationIds);
+		};
+	});
+	/** The bar waits for the box: a new one is only drawn once laid out, and a parked one has none. */
 	let typed = $derived.by((): NodeDraftControls | undefined => {
 		const current = draft;
-		if (current === undefined || canvas === undefined) return undefined;
+		if (current === undefined || canvas === undefined || current.parked) return undefined;
 		if (!canvas.nodes.some(({ id }) => id === current.id)) return undefined;
 		return current;
+	});
+	/** The « + » handles of the selected box: a child away from the goal, a sibling beside it. */
+	let handles = $derived.by(() => {
+		const actions = contextual;
+		const direction = canvas?.direction;
+		if (actions?.entity.kind !== EntityKind.Node || direction === undefined) return undefined;
+		if (viewportElement === undefined || hideToolbar) return undefined;
+		const { child, sibling } = actions;
+		if (child === undefined || sibling === undefined) return undefined;
+		const anchor = canvasEntityElement(
+			viewportElement,
+			entityKey(EntityKind.Node, actions.entity.id),
+		);
+		if (!(anchor instanceof HTMLElement)) return undefined;
+		return { anchor, nodeId: actions.entity.id, sides: handleSides(direction), child, sibling };
 	});
 </script>
 
@@ -204,12 +256,16 @@
 			dissolve={contextual.dissolve}
 			split={contextual.split}
 			child={contextual.child}
+			sibling={contextual.sibling}
 			{viewportElement}
 			{onDelete}
 		/>
 	{/if}
+	{#if handles}
+		<NodeHandles {...handles} />
+	{/if}
 	{#if viewportElement && !hideToolbar}
-		<SelectionBar {viewportElement} {session} {onGroup} {onDelete} />
+		<SelectionBar {viewportElement} {session} {onGroup} onJunction={selectionJunction} {onDelete} />
 	{/if}
 	{#if typed && viewportElement}
 		{#key typed.id}<TypingBar draft={typed} {viewportElement} />{/key}

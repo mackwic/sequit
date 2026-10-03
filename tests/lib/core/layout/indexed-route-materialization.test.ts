@@ -147,6 +147,14 @@ describe('indexed channel route materialization', () => {
 		}
 	});
 
+	it('emits layout elements in endpoint-id order, not bounds-map order', () => {
+		const { graph, bounds, frame, space } = crossingFixture(true);
+		const ids = [...graph.endpointsById.keys()].toSorted(compareCanonicalStrings);
+		expect([...bounds.keys()]).not.toEqual(ids);
+		const result = buildLayoutResult({ graph, bounds, routing: undefined, frame, space });
+		expect(result.elements.map(({ id }) => id)).toEqual(ids);
+	});
+
 	it('certifies graph relations in any order, but not repeated ones', () => {
 		const { graph, bounds } = crossingFixture(true);
 		const ranks = new Map<string, number>([

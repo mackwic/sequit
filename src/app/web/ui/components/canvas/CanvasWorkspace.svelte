@@ -42,6 +42,7 @@
 		junctionInsertion,
 		junctionOperatorUpdate,
 		layoutUpdate,
+		nodeNatureUpdate,
 		relationCreation,
 	} from '../../../document/document-commands';
 	import { m } from '../../../i18n/paraglide/messages';
@@ -131,6 +132,13 @@
 		if (!interactive) return undefined;
 		return openNatures;
 	});
+	/** An empty canvas invites its first box while the canvas takes commands. */
+	let startAction = $derived.by((): (() => void) | undefined => {
+		if (!interactive) return undefined;
+		return () => {
+			openDraft({});
+		};
+	});
 	function outcomeError(outcome: DocumentCommandOutcome): string | undefined {
 		if (outcome.kind === DocumentCommandOutcomeKind.Accepted) return undefined;
 		if (outcome.kind === DocumentCommandOutcomeKind.Failed)
@@ -171,6 +179,11 @@
 		const current = opened;
 		if (current.ok)
 			void execute(() => current.value.session.dispatch([containerMove(ids, groupId)]));
+	}
+	function changeNature(nodeId: string, natureId: string): void {
+		const current = opened;
+		if (current.ok && interactive)
+			void execute(() => current.value.session.dispatch([nodeNatureUpdate(nodeId, natureId)]));
 	}
 	function openGroupEditor(groupId: string, mode: 'name' | 'edit' = 'edit'): void {
 		const current = opened;
@@ -269,11 +282,11 @@
 		lastOperator = editing.draft;
 		editingJunction = undefined;
 	}
-	/** Threads a junction through the relation, selects it, then asks for its operator. */
-	async function insertJunction(relationId: string): Promise<void> {
+	/** Converges the relations on a junction, selects it, then asks for its operator. */
+	async function insertJunction(relationIds: readonly string[]): Promise<void> {
 		const current = opened;
 		if (!current.ok || !session || busy) return;
-		const plan = planJunctionInsertion(current.value.read(), relationId, {
+		const plan = planJunctionInsertion(current.value.read(), relationIds, {
 			junctionId: crypto.randomUUID(),
 			relationId: () => crypto.randomUUID(),
 			operator: lastOperator,
@@ -408,24 +421,24 @@
 			model = current.value.read();
 		});
 		const sessionHistory = current.value.session.history;
-		history = sessionHistory?.availability() ?? { undo: false, redo: false };
-		const stopHistory = sessionHistory?.subscribe((availability) => {
+		history = sessionHistory.availability();
+		const stopHistory = sessionHistory.subscribe((availability) => {
 			history = availability;
 		});
 		return () => {
 			stop();
-			stopHistory?.();
+			stopHistory();
 			current.value.destroy();
 		};
 	});
 	/** History steps publish like any change; nothing else to refresh. */
 	function undo(): void {
 		if (!opened.ok || !interactive) return;
-		opened.value.session.history?.undo();
+		opened.value.session.history.undo();
 	}
 	function redo(): void {
 		if (!opened.ok || !interactive) return;
-		opened.value.session.history?.redo();
+		opened.value.session.history.redo();
 	}
 </script>
 
@@ -434,6 +447,7 @@
 	aria-label={m.canvas_workspace()}
 >
 	{#if opened.ok && session}
+		{@const current = opened.value}
 		<CanvasShortcut
 			shortcut={CANVAS_SHORTCUTS[CanvasShortcutId.Undo]}
 			enabled={interactive && history.undo}
@@ -447,6 +461,7 @@
 		<CanvasGestures
 			{session}
 			enabled={interactive}
+			read={() => current.read()}
 			oncreate={openDraft}
 			onconnect={connect}
 			onmove={moveSelection}
@@ -461,6 +476,8 @@
 				onNodeType={(node: RenderedCanvasNode) => {
 					if (interactive) typing?.typeInPlace(node);
 				}}
+				onNodeNature={changeNature}
+				onStart={startAction}
 				oncanvas={(canvas: CanvasModel, element: HTMLDivElement) => {
 					canvasModel = canvas;
 					canvasViewport = element;
@@ -471,11 +488,14 @@
 					void dissolveGroup(groupId);
 				}}
 				onJunctionEdit={openJunctionEditor}
-				onRelationSplit={(relationId: string) => {
-					void insertJunction(relationId);
+				onJunctionInsert={(relationIds: readonly string[]) => {
+					void insertJunction(relationIds);
 				}}
 				onCreateChild={(target: EntityRef) => {
 					openDraft({ target });
+				}}
+				onCreateSibling={(sibling: EntityRef) => {
+					openDraft({ sibling });
 				}}
 				onDelete={deleteSelection}
 				onGroup={groupAction}

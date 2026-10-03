@@ -254,6 +254,10 @@ Le partage est autorisé continûment depuis une même source. Une arrivée comm
 
 `check.routes().haveOnlyAllowedSharedTrunks()` contrôle ces partages, les ports entrants exclusifs (même un simple point commun est interdit après croisement) et les recouvrements hors des troncs autorisés. Une sélection utilise le layout complet pour détecter ses croisements. `followLayoutFlow()` exige des attaches sur les faces principales opposées, des segments d’attache sur l’axe principal et aucun retour en arrière. Les contacts en T sans partage restent à spécifier séparément.
 
+Ce contrôle compare les flèches deux à deux : il ne voit pas qu'une suite de partages tous permis relie des flèches qui ne partagent rien directement. `check.routes().haveNoPhantomRelation()` regroupe les routes dont l'encre se touche : port commun, tronc commun ou contact en T. Un croisement strict ne relie rien. Chaque réseau suggère toutes ses paires source × cible, quel que soit le sens des flèches ; une paire qui n'est pas dessinée est une relation fantôme (`routes.phantom-relation`). La règle porte sur la sélection : les routes hors sélection sont ignorées.
+
+[`layoutTopology(layout)`](layout-topology.ts) observe ce que le layout décide sans coordonnées : l'ordre des boîtes de chaque rang, les groupes de ports de chaque face dans leur ordre, les paires de routes qui se croisent et les réseaux d'encre. Comparer deux observations montre si une décision topologique dépend des tailles des boîtes.
+
 Les sources du motif biparti peuvent utiliser un ou plusieurs ports. `haveCountBetween` observe cette latitude ; `hasSizeForUsedPorts` vérifie le maximum du contenu et des besoins des ports effectivement utilisés, sans imposer un port par flèche. Les capacités inutilisées ne sont pas encore exposées par le moteur.
 
 Priorités convenues : contraintes documentaires et séparations nécessaires, réduction des croisements, centrages, trajets droits, puis réduction des rails et des coudes. Examiner une permutation à partir de deux flèches contournant la même boîte reste une hypothèse à illustrer ; aucun nouveau mécanisme de permutation n’est ajouté ici.

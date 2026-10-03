@@ -90,6 +90,8 @@ Les sessions locale et collaborative implémentent la même interface `DocumentS
 
 La session collaborative reste regroupée avec son protocole et ses documents Yjs. Cette organisation n'introduit pas de moteur de synchronisation abstrait indépendant de Yjs.
 
+Chaque session tient l’historique des pas de la personne derrière la même interface `DocumentHistory`. La session locale s’appuie sur un `Y.UndoManager`. La session collaborative ne peut pas annuler une update Yjs que la room n’accepterait pas : `SessionHistory` y garde, pour chaque lot accepté, les documents avant et après son commit, et propose à la room le lot de commandes qui rétablit ce que le pas a changé (`restoreHistoryStep`, dans `infrastructure/document`). Les frappes d’un champ se rétablissent par son `Y.Text`.
+
 `CanvasProjection` décrit les données mesurables, la publication des changements et la production du modèle visuel. Le produit et l'atelier fournissent chacun ce contrat. Le canvas ne dérive plus son interface du résultat d'ouverture d'un fichier TOML.
 
 Le moteur de layout est synchrone et pur : son résultat est une fonction des seuls inputs. L'enveloppe asynchrone est dans `app/web/projection`. La mesure des éléments DOM et les brouillons, sélections, zooms et demandes de focus restent dans l'UI.

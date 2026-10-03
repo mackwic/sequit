@@ -39,17 +39,43 @@ function document(): LogicDocument {
 
 describe('planJunctionInsertion', () => {
 	it('threads the junction between the endpoints and drops the replaced relation last', () => {
-		const plan = planJunctionInsertion(document(), 'R', ids());
+		const plan = planJunctionInsertion(document(), ['R'], ids());
 		expect(plan).toEqual({
 			junction: { id: 'J', operator: JunctionOperator.And },
-			incoming: { id: 'R1', from: 'B', to: 'J' },
-			outgoing: { id: 'R2', from: 'J', to: 'A' },
-			replacedRelationId: 'R',
+			incoming: [{ id: 'R1', from: 'B', to: 'J' }],
+			outgoing: [{ id: 'R2', from: 'J', to: 'A' }],
+			replacedRelationIds: ['R'],
 		});
 	});
 
-	it('returns nothing for a relation the document no longer has', () => {
-		expect(planJunctionInsertion(document(), 'gone', ids())).toBeUndefined();
+	it('converges several relations, once per origin, then points to each destination', () => {
+		const converging = document();
+		const diverging = {
+			...converging,
+			relations: [...converging.relations, { id: 'CB', from: 'C', to: 'B' }],
+		};
+		expect(planJunctionInsertion(converging, ['R', 'CA'], ids())).toEqual({
+			junction: { id: 'J', operator: JunctionOperator.And },
+			incoming: [
+				{ id: 'R1', from: 'B', to: 'J' },
+				{ id: 'R2', from: 'C', to: 'J' },
+			],
+			outgoing: [{ id: 'R3', from: 'J', to: 'A' }],
+			replacedRelationIds: ['R', 'CA'],
+		});
+		expect(planJunctionInsertion(diverging, ['CA', 'CB'], ids())).toMatchObject({
+			incoming: [{ from: 'C', to: 'J' }],
+			outgoing: [
+				{ from: 'J', to: 'A' },
+				{ from: 'J', to: 'B' },
+			],
+			replacedRelationIds: ['CA', 'CB'],
+		});
+	});
+
+	it('returns nothing without relations or when one is no longer in the document', () => {
+		expect(planJunctionInsertion(document(), [], ids())).toBeUndefined();
+		expect(planJunctionInsertion(document(), ['R', 'gone'], ids())).toBeUndefined();
 	});
 });
 

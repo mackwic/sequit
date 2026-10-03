@@ -136,6 +136,7 @@ it.each([
 	[CanvasShortcutId.Junction, 'J', 'J', 'j'],
 	[CanvasShortcutId.Create, 'N', 'N', 'n'],
 	[CanvasShortcutId.CreateChild, 'C', 'C', 'c'],
+	[CanvasShortcutId.CreateSibling, 'S', 'S', 's'],
 	[CanvasShortcutId.DraftChild, 'Ctrl+Maj+Entrée', '⇧⌘↵', 'Control+Shift+Enter Meta+Shift+Enter'],
 	[CanvasShortcutId.DraftEdit, 'Ctrl+E', '⌘E', 'Control+e Meta+e'],
 	[CanvasShortcutId.Delete, 'Suppr', '⌫', 'Delete Backspace'],

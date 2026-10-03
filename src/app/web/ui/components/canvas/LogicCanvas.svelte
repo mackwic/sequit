@@ -34,8 +34,10 @@
 	import { CANVAS_SHORTCUTS, CanvasShortcutId } from '../../canvas/canvas-shortcuts';
 	import {
 		anchorPreservingScroll,
+		canvasPanOffset,
 		type CanvasPoint,
-		DEFAULT_CANVAS_ZOOM,
+		type CanvasViewportGeometry,
+		pannedScroll,
 		panScrollPosition,
 	} from '../../canvas/canvas-viewport';
 	import {
@@ -45,10 +47,12 @@
 	import type { LayoutReportRequest } from '../../report/capture-layout-report';
 	import type { CanvasSession, EditingCanvasActivity } from '../../session/canvas-session.svelte';
 	import LayoutReport from '../report/LayoutReport.svelte';
+	import MenuSurface from '../ui/MenuSurface.svelte';
 	import CanvasContextMenu from './CanvasContextMenu.svelte';
 	import CanvasMeasurementLayer from './CanvasMeasurementLayer.svelte';
 	import CanvasOverlay from './CanvasOverlay.svelte';
 	import CanvasShortcut from './CanvasShortcut.svelte';
+	import NatureMenuItems from './NatureMenuItems.svelte';
 	import type { NodeDraftControls } from './node-typing.svelte';
 	import RegionPartialPreview from './RegionPartialPreview.svelte';
 	import RenderedCanvas from './RenderedCanvas.svelte';
@@ -60,6 +64,8 @@
 		lanes = [],
 		draft,
 		onNodeType,
+		onNodeNature,
+		onStart,
 		editor,
 		awareness,
 		hideToolbar = false,
@@ -70,8 +76,9 @@
 		onGroupToggle,
 		onGroupDissolve,
 		onJunctionEdit,
-		onRelationSplit,
+		onJunctionInsert,
 		onCreateChild,
+		onCreateSibling,
 		onManageNatures,
 		onExport,
 		onExportImage,
@@ -87,6 +94,10 @@
 		draft?: NodeDraftControls | undefined;
 		/** Types a box in place on double-click or Enter; without it, they open its dialog. */
 		onNodeType?: ((node: RenderedCanvasNode) => void) | undefined;
+		/** Gives a box another nature; without it, the header of the selected box opens no menu. */
+		onNodeNature?: ((nodeId: string, natureId: string) => void) | undefined;
+		/** Starts typing the first box; without it, an empty canvas invites nothing. */
+		onStart?: (() => void) | undefined;
 		hideToolbar?: boolean;
 		oncanvas?: ((canvas: CanvasModel, viewport: HTMLDivElement) => void) | undefined;
 		onGroup?: (() => void) | undefined;
@@ -95,8 +106,11 @@
 		onGroupToggle?: ((groupId: string) => void) | undefined;
 		onGroupDissolve?: ((groupId: string) => void) | undefined;
 		onJunctionEdit?: ((junctionId: string) => void) | undefined;
-		onRelationSplit?: ((relationId: string) => void) | undefined;
+		/** Converges the given relations on a new junction; one relation is split in two. */
+		onJunctionInsert?: ((relationIds: readonly string[]) => void) | undefined;
 		onCreateChild?: ((target: EntityRef) => void) | undefined;
+		/** Starts typing a sibling of the selected node; its handle and `S` need it. */
+		onCreateSibling?: ((target: EntityRef) => void) | undefined;
 		/** Offered by the background menu, each only when given. */
 		onManageNatures?: (() => void) | undefined;
 		onExport?: (() => void) | undefined;
@@ -107,6 +121,28 @@
 		report?: LayoutReportRequest | undefined;
 	} = $props();
 	let measurementModel = $state.raw<CanvasMeasurementModel>();
+	/** The box whose nature menu is open, under its header. */
+	let natureMenu = $state.raw<{ readonly nodeId: string; readonly header: HTMLElement }>();
+	/** The menu lasts while its box stays alone in the selection and nothing is being typed. */
+	let natureMenuNode = $derived.by(() => {
+		const menu = natureMenu;
+		const entity = session.contextualEntity;
+		if (menu === undefined || onNodeNature === undefined || canvas === undefined) return undefined;
+		if (entity?.kind !== EntityKind.Node || entity.id !== menu.nodeId) return undefined;
+		const node = canvas.nodes.find(({ id }) => id === menu.nodeId);
+		if (node === undefined) return undefined;
+		return { id: node.id, natureId: node.nature.id, header: menu.header };
+	});
+	/** A second click on the header closes the menu it opened. */
+	function toggleNatureMenu(nodeId: string, header: HTMLElement): void {
+		if (natureMenuNode?.id === nodeId) natureMenu = undefined;
+		else natureMenu = { nodeId, header };
+	}
+	function closeNatureMenu(restoreFocus: boolean): void {
+		const header = natureMenu?.header;
+		natureMenu = undefined;
+		if (restoreFocus) header?.closest<HTMLElement>('[data-node-id]')?.focus();
+	}
 	let measurementLayer = $state<HTMLDivElement>();
 	let viewport = $state<HTMLDivElement>();
 	// Projection snapshots are immutable; deep proxies would track every geometry read.
@@ -141,7 +177,6 @@
 	let previousProjectionRevision = -1;
 	let activeLayoutRequest: object | undefined;
 	let pendingZoomAnchor: CanvasPoint | undefined;
-	let appliedZoom = DEFAULT_CANVAS_ZOOM;
 	let panStart:
 		| {
 				pointer: CanvasPoint;
@@ -149,18 +184,62 @@
 				pointerId: number;
 		  }
 		| undefined;
+	/** The geometry the scroll position was last set for, while a canvas shows. */
+	let shownGeometry: CanvasViewportGeometry | undefined;
+	/** How far the person panned from the default framing; survives layouts, zooms and resizes. */
+	let panOffset: CanvasPoint = { x: 0, y: 0 };
 
-	$effect(() => {
-		const toZoom = session.zoom;
-		if (toZoom === appliedZoom) return;
-		const fromZoom = appliedZoom;
+	/**
+	 * Sets the scroll position once the stage shows a new geometry: a zoom keeps the point under its
+	 * anchor, any other change keeps the pan offset, so that an unpanned stage stays centred while
+	 * it fits. The pan margin is CSS, so a resize only moves the scroll position, never the layout.
+	 */
+	function followGeometry(): void {
+		const current = viewport;
+		const stage = canvas;
+		const zoom = session.zoom;
+		if (!current || !stage) {
+			shownGeometry = undefined;
+			return;
+		}
+		const size = { width: current.clientWidth, height: current.clientHeight };
+		const next = { stage: { width: stage.width, height: stage.height }, viewport: size, zoom };
+		const previous = shownGeometry;
 		const anchor = pendingZoomAnchor;
 		pendingZoomAnchor = undefined;
-		appliedZoom = toZoom;
-		void tick().then(() => {
-			preserveZoomAnchor(fromZoom, toZoom, anchor);
-		});
+		if (previous !== undefined && JSON.stringify(previous) === JSON.stringify(next)) return;
+		let scroll = pannedScroll(next, panOffset);
+		if (previous !== undefined && previous.zoom !== next.zoom)
+			scroll = anchorPreservingScroll({
+				from: previous,
+				to: next,
+				anchor: anchor ?? { x: size.width / 2, y: size.height / 2 },
+				scroll: pannedScroll(previous, panOffset),
+			});
+		shownGeometry = next;
+		panOffset = canvasPanOffset(next, scroll);
+		current.scrollTo(scroll.left, scroll.top);
+	}
+
+	$effect(followGeometry);
+
+	$effect(() => {
+		const current = viewport;
+		if (!current) return;
+		const observer = new ResizeObserver(followGeometry);
+		observer.observe(current);
+		return () => {
+			observer.disconnect();
+		};
 	});
+
+	function recordPan() {
+		if (viewport && shownGeometry)
+			panOffset = canvasPanOffset(shownGeometry, {
+				left: viewport.scrollLeft,
+				top: viewport.scrollTop,
+			});
+	}
 
 	$effect(() => {
 		const current = openedDocument;
@@ -226,23 +305,6 @@
 				session.clearSelection();
 			}
 		}
-	}
-
-	function preserveZoomAnchor(fromZoom: number, toZoom: number, requestedAnchor?: CanvasPoint) {
-		if (!viewport || !canvas) return;
-		const anchor = requestedAnchor ?? {
-			x: viewport.clientWidth / 2,
-			y: viewport.clientHeight / 2,
-		};
-		const next = anchorPreservingScroll({
-			stage: { width: canvas.width, height: canvas.height },
-			viewport: { width: viewport.clientWidth, height: viewport.clientHeight },
-			anchor,
-			scroll: { left: viewport.scrollLeft, top: viewport.scrollTop },
-			fromZoom,
-			toZoom,
-		});
-		viewport.scrollTo(next.left, next.top);
 	}
 
 	function sourceDiagnosticKey(diagnostic: InvalidSourceDocumentState['diagnostics'][number]) {
@@ -354,7 +416,7 @@
 		if (isCanvasBackground(event.target)) session.clearSelection();
 	}
 
-	/** Every node and junction drawn, as an envelope over the whole canvas would take them. */
+	/** Every node and junction drawn; unlike an envelope, junctions are taken too. */
 	function selectAll() {
 		if (!canvas) return;
 		session.clearSelection();
@@ -498,6 +560,7 @@
 		data-canvas-revision={acceptedRevision}
 		tabindex="-1"
 		bind:this={viewport}
+		onscroll={recordPan}
 		onwheel={handleWheel}
 		onpointerdown={startPanning}
 		onpointermove={continuePanning}
@@ -513,10 +576,12 @@
 				{session}
 				{draft}
 				{onNodeType}
+				onNatureMenu={onNodeNature && toggleNatureMenu}
+				{onStart}
 				{onGroupEdit}
 				{onGroupToggle}
 				{onJunctionEdit}
-				{onRelationSplit}
+				{onJunctionInsert}
 			/>
 		{:else if display.kind === 'invalid-source'}
 			<section
@@ -667,8 +732,9 @@
 			{onGroupToggle}
 			{onGroupDissolve}
 			{onJunctionEdit}
-			{onRelationSplit}
+			{onJunctionInsert}
 			{onCreateChild}
+			{onCreateSibling}
 			{onDelete}
 		/>
 	{/if}
@@ -686,6 +752,27 @@
 			}}
 		/>
 	{/if}
+	{#if natureMenuNode && onNodeNature}
+		{@const menu = natureMenuNode}
+		{@const change = onNodeNature}
+		<MenuSurface
+			open
+			label={m.canvas_nature_menu()}
+			anchor={menu.header}
+			owner={menu.header}
+			placement="bottom-start"
+			restoreFocusOnSelect
+			onclose={closeNatureMenu}
+		>
+			<NatureMenuItems
+				{natures}
+				checkedId={menu.natureId}
+				onselect={(natureId: string) => {
+					if (natureId !== menu.natureId) change(menu.id, natureId);
+				}}
+			/>
+		</MenuSurface>
+	{/if}
 	{#if report}
 		<LayoutReport
 			request={report}
@@ -698,13 +785,16 @@
 </div>
 
 <style>
+	/* The stage's pan margin is sized in `cqw`/`cqh` of this viewport (`RenderedCanvas`). */
 	.canvas-grid {
+		container-type: size;
 		background-color: #f5f5f4;
 		background-image: radial-gradient(#d6d3d1 0.8px, transparent 0.8px);
 		background-size: 20px 20px;
 	}
 	@media print {
 		.canvas-grid {
+			container-type: normal;
 			background: none;
 		}
 	}

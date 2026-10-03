@@ -106,6 +106,7 @@
 	"editing_context_delete_junction": "Supprimer la jonction",
 	"editing_context_delete_relation": "Supprimer la relation",
 	"editing_context_create_child_aria": "Créer un enfant de {id}",
+	"editing_context_create_sibling_aria": "Créer un frère de {id}",
 	"editing_context_fold_aria": "{label} le groupe {id}",
 	"editing_context_dissolve_aria": "Dissoudre le groupe {id}",
 	"editing_context_dissolve_hint": "Dissoudre : conserve les membres",
@@ -122,6 +123,7 @@
 			}
 		}
 	],
+	"editing_selection_junction_aria": "Faire converger {count} relations vers une jonction",
 	"editing_selection_delete_aria": "Supprimer {count} éléments",
 	"editing_canvas_actions": "Actions du canvas",
 	"editing_canvas_manage_natures": "Gérer les natures du document",

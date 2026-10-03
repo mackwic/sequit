@@ -56,14 +56,14 @@ export function connectedNodeCreation(
 }
 
 /**
- * Threads a junction through a relation: creations first, so no junction is ever unanchored. The
- * junction is created where its only target, the destination, puts it.
+ * Threads a junction through relations: creations first, so no junction is ever unanchored. The
+ * junction is created where its targets, the destinations, put it.
  */
 export interface JunctionInsertion {
 	readonly junction: { readonly id: string; readonly operator: JunctionOperator };
-	readonly incoming: LogicRelation;
-	readonly outgoing: LogicRelation;
-	readonly replacedRelationId: string;
+	readonly incoming: readonly LogicRelation[];
+	readonly outgoing: readonly LogicRelation[];
+	readonly replacedRelationIds: readonly string[];
 }
 
 export function junctionInsertion(
@@ -71,12 +71,13 @@ export function junctionInsertion(
 	plan: JunctionInsertion,
 ): readonly SharedDocumentCommand[] {
 	const { id, operator } = plan.junction;
-	const properties = { operator, ...junctionPlacement(document, [plan.outgoing.to]) };
+	const targets = plan.outgoing.map(({ to }) => to);
+	const properties = { operator, ...junctionPlacement(document, targets) };
 	return [
 		{ op: SharedCommandKind.Create, target: { kind: SharedElementKind.Junction, id }, properties },
-		relationCreation(plan.incoming),
-		relationCreation(plan.outgoing),
-		{ op: SharedCommandKind.DeleteRelations, ids: [plan.replacedRelationId] },
+		...plan.incoming.map(relationCreation),
+		...plan.outgoing.map(relationCreation),
+		{ op: SharedCommandKind.DeleteRelations, ids: plan.replacedRelationIds },
 	];
 }
 
@@ -88,6 +89,16 @@ export function junctionOperatorUpdate(
 		op: SharedCommandKind.Update,
 		target: { kind: SharedElementKind.Junction, id: junctionId },
 		set: { operator },
+		unset: [],
+	};
+}
+
+/** The nature alone changes; a colour or icon of the box's own stays above the new nature's. */
+export function nodeNatureUpdate(nodeId: string, natureId: string): SharedDocumentCommand {
+	return {
+		op: SharedCommandKind.Update,
+		target: { kind: SharedElementKind.Node, id: nodeId },
+		set: { natureId },
 		unset: [],
 	};
 }

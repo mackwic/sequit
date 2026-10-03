@@ -23,17 +23,14 @@ const candidates = [
 ];
 
 describe('selection envelope', () => {
-	it('tracks intersected nodes and junctions, but never groups', () => {
+	it('tracks intersected nodes, but never junctions or groups', () => {
 		expect(
 			selectionInsideEnvelope([], candidates, {
 				from: { x: 35, y: 35 },
 				to: { x: 5, y: 5 },
 				additive: false,
 			}),
-		).toEqual([
-			{ kind: EntityKind.Node, id: 'inside' },
-			{ kind: EntityKind.Junction, id: 'crossed' },
-		]);
+		).toEqual([{ kind: EntityKind.Node, id: 'inside' }]);
 	});
 
 	it('preserves the initial selection only in additive mode without duplicates', () => {
@@ -44,13 +41,11 @@ describe('selection envelope', () => {
 		const from = { x: 25, y: 25 };
 		const to = { x: 55, y: 55 };
 
-		expect(selectionInsideEnvelope(initial, candidates, { from, to, additive: true })).toEqual([
-			...initial,
-			{ kind: EntityKind.Junction, id: 'crossed' },
-		]);
+		expect(selectionInsideEnvelope(initial, candidates, { from, to, additive: true })).toEqual(
+			initial,
+		);
 		expect(selectionInsideEnvelope(initial, candidates, { from, to, additive: false })).toEqual([
 			{ kind: EntityKind.Node, id: 'inside' },
-			{ kind: EntityKind.Junction, id: 'crossed' },
 		]);
 	});
 });
