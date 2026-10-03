@@ -297,8 +297,10 @@ function scaledSizes(
 }
 
 // Measured alone: 9.6–9.8 s for the 200 default runs, about 50 ms each. The 5,000 fuzz runs of the
-// same seed sum to 286 s under load (one draw takes 90 s): the ceiling follows the run count.
-const PASSAGE_PROPERTY_TIMEOUT = PROPERTY_PARAMETERS.numRuns * 150;
+// same seed sum to 286 s under load (one draw takes 90 s): the ceiling follows the run count. After
+// the wave-2 merge into main, the full coverage gate (four workers, three passes) takes 25.4-27.6 s:
+// ceil(27.6 * 1.5 / 5) * 5 = 45 s for 200 runs, hence 225 ms per run (user decision 2026-10-02).
+const PASSAGE_PROPERTY_TIMEOUT = PROPERTY_PARAMETERS.numRuns * 225;
 
 describe('dedicated layout components', () => {
 	// Bounded by size: the census of 300 twelve-node documents in four directions is the opt-in

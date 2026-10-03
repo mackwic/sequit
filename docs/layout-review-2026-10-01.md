@@ -92,7 +92,7 @@ Décision utilisateur du 3 octobre 2026 prise à la fusion : un groupe d'au moin
 
 - Snapshot : `wide-bipartite-layers/1000` 138 → 610 ms (D-05) ; `subgroups/19` 10 → 20 ms (D-04). Détail et mesures : `tests/support/performance/README.md`.
 - Incrémental : `wide-bipartite-layers/50-99` 6 → 45 ms (D-05) ; `wide-bipartite-layers/1-9` 5 → 20 ms (fusion avec `main`).
-- Délais de test : `relation-rename-invariance` 20 → 60 s (relations) et 60 → 85 s (identifiants inversés) ; corpus riche de `group-endpoint-routing` 5 → 60 s ; `layout-differential` 65 → 125 s.
+- Délais de test, mesurés sous la porte de couverture complète (quatre workers, trois passes) puis `ceil(pire × 1,5 / 5) × 5` : `relation-rename-invariance` 20 → 60 s pour les relations et 60 → 175 s pour les identifiants inversés ; corpus riche de `group-endpoint-routing` 5 → 110 s ; `dedicated-layout-components` 225 ms par tirage (45 s par défaut) ; deux propriétés de `layout-graph.property` 5 → 10 s ; `layout-differential` 65 → 125 s. La tranche de performance sur la réparation des routes de groupes, décidée le 3 octobre 2026, doit les faire redescendre.
 - Lanes : `MAX_SHARED_LANE_ALLOCATION_WORK_PER_PASS` est revenu à 20 000 à la fusion.
 
 ## Lanes

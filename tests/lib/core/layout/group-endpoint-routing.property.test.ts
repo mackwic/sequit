@@ -562,5 +562,7 @@ it('publishes only valid group and junction routes in the rich corpus', () => {
 	// 8.1 s with the T-04 generator, which 8eb1ac25 rejects with a GroupRouteFailure.
 	// Wave-2 integration (D-03 + D-04 + D-05 + D-06), 2026-10-02: 14.6 s alone and above 15 s
 	// under `test:property` with four workers; 8eb1ac25 spends 153 s laying out the same 200
-	// documents. Correctness before performance (user decision 2026-10-02).
-}, 60_000);
+	// documents. Correctness before performance (user decision 2026-10-02). After the merge into
+	// main: 59.5-71.6 s under the full coverage gate (four workers, three passes);
+	// ceil(71.6 * 1.5 / 5) * 5 = 110 s.
+}, 110_000);

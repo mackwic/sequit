@@ -489,7 +489,9 @@ describe('generated layouts', () => {
 			}),
 			PROPERTY_PARAMETERS,
 		);
-	});
+		// User decision 2026-10-02 (correction before performance): 4.1-5.0 s under the full coverage
+		// gate after the wave-2 merge, over the 5 s default; ceil(5.0 * 1.5 / 5) * 5 = 10 s.
+	}, 10_000);
 
 	it('scales content while preserving topology and required port clearances', async () => {
 		await fc.assert(
@@ -566,5 +568,6 @@ describe('generated layouts', () => {
 			),
 			PROPERTY_PARAMETERS,
 		);
-	});
+		// Same decision and gate: 4.0-4.4 s, ceil(4.4 * 1.5 / 5) * 5 = 10 s.
+	}, 10_000);
 });
